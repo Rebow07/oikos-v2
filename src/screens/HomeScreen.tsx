@@ -1,5 +1,5 @@
-import React from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
+import React, { useCallback, useEffect } from 'react';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, RefreshControl } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Wallet, ListTodo, CalendarDays, Settings, Users, ChevronRight } from 'lucide-react-native';
 import { useTheme, AppColors, Spacing, FontSize, FontWeight, Radius } from '../theme';
@@ -27,7 +27,10 @@ export default function HomeScreen({ navigation }: any) {
   const { Colors } = useTheme();
   const s = makeStyles(Colors);
   const insets = useSafeAreaInsets();
-  const { nomeUsuario, qtdMembros, grupo } = useApp();
+  
+  // ✅ Pegamos as variáveis do contexto. 
+  // Se o AppContext atualizar, o HomeScreen irá renderizar novamente sozinho.
+  const { nomeUsuario, qtdMembros, grupo, carregandoGrupo } = useApp();
 
   const modules = [
     { title: 'Finanças', desc: 'Despesas, receitas, cartões, bancos, compras', icon: Wallet, color: '#c9a227', route: 'FinancasTab' },
@@ -37,13 +40,25 @@ export default function HomeScreen({ navigation }: any) {
 
   return (
     <View style={[s.container, { paddingTop: insets.top }]}>
-      <ScrollView contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
+      <ScrollView 
+        contentContainerStyle={s.scroll} 
+        showsVerticalScrollIndicator={false}
+        // ✅ Adicionamos um RefreshControl para caso o usuário queira forçar, 
+        // mas o foco é a atualização automática via Context.
+        refreshControl={
+          <RefreshControl refreshing={carregandoGrupo} tintColor={Colors.primary} />
+        }
+      >
         <View style={s.header}>
-          <Text style={s.greeting}>Olá, {nomeUsuario || 'Usuário'}</Text>
-          <Text style={s.subtitle}>{grupo?.nome || 'Minha Família'}</Text>
+          {/* ✅ Usamos um fallback ('...') para quando estiver carregando */}
+          <Text style={s.greeting}>Olá, {nomeUsuario || '...'}</Text>
+          <Text style={s.subtitle}>{grupo?.nome || 'Carregando família...'}</Text>
+          
           <View style={s.membrosChip}>
             <Users size={14} color={Colors.primary} />
-            <Text style={s.membrosText}>{qtdMembros} membro{qtdMembros !== 1 ? 's' : ''}</Text>
+            <Text style={s.membrosText}>
+              {qtdMembros} membro{qtdMembros !== 1 ? 's' : ''}
+            </Text>
           </View>
         </View>
 
@@ -51,18 +66,37 @@ export default function HomeScreen({ navigation }: any) {
         {modules.map((mod) => {
           const Icon = mod.icon;
           return (
-            <TouchableOpacity key={mod.route} style={s.moduleCard} onPress={() => navigation.navigate(mod.route)} activeOpacity={0.7}>
-              <View style={[s.moduleIconBg, { backgroundColor: mod.color + '18' }]}><Icon size={26} color={mod.color} /></View>
-              <View style={s.moduleInfo}><Text style={s.moduleTitle}>{mod.title}</Text><Text style={s.moduleDesc}>{mod.desc}</Text></View>
+            <TouchableOpacity 
+              key={mod.route} 
+              style={s.moduleCard} 
+              onPress={() => navigation.navigate(mod.route)} 
+              activeOpacity={0.7}
+            >
+              <View style={[s.moduleIconBg, { backgroundColor: mod.color + '18' }]}>
+                <Icon size={26} color={mod.color} />
+              </View>
+              <View style={s.moduleInfo}>
+                <Text style={s.moduleTitle}>{mod.title}</Text>
+                <Text style={s.moduleDesc}>{mod.desc}</Text>
+              </View>
               <ChevronRight size={20} color={Colors.textMuted} />
             </TouchableOpacity>
           );
         })}
 
         <Text style={s.sectionTitle}>Configurações</Text>
-        <TouchableOpacity style={s.moduleCard} onPress={() => navigation.navigate('ConfigTab')} activeOpacity={0.7}>
-          <View style={[s.moduleIconBg, { backgroundColor: Colors.textMuted + '18' }]}><Settings size={26} color={Colors.textMuted} /></View>
-          <View style={s.moduleInfo}><Text style={s.moduleTitle}>Configurações</Text><Text style={s.moduleDesc}>Perfil, grupo, tema</Text></View>
+        <TouchableOpacity 
+          style={s.moduleCard} 
+          onPress={() => navigation.navigate('ConfigTab')} 
+          activeOpacity={0.7}
+        >
+          <View style={[s.moduleIconBg, { backgroundColor: Colors.textMuted + '18' }]}>
+            <Settings size={26} color={Colors.textMuted} />
+          </View>
+          <View style={s.moduleInfo}>
+            <Text style={s.moduleTitle}>Configurações</Text>
+            <Text style={s.moduleDesc}>Perfil, grupo, tema</Text>
+          </View>
           <ChevronRight size={20} color={Colors.textMuted} />
         </TouchableOpacity>
       </ScrollView>
