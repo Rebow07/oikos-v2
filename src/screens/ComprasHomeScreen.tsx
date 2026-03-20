@@ -168,18 +168,21 @@ export default function ComprasHomeScreen({ navigation }: any) {
       return; 
     }
 
-    Alert.alert('Finalizar Compra', 'Isso irá marcar todos os itens como comprados e gerar uma despesa. Continuar?', [
+    Alert.alert('Finalizar Compra', 'Deseja finalizar a lista e registrar a despesa agora? Você será direcionado para escolher a forma de pagamento.', [
       { text: 'Cancelar', style: 'cancel' },
-      { text: 'Finalizar', onPress: async () => {
+      { text: 'Finalizar e Pagar', onPress: async () => {
           try {
+            // Marca tudo como comprado no banco
             await supabase.from('itens_compra').update({ marcado: true }).eq('lista_id', listaSel?.id);
+            
             if (listaSel) {
               await supabase.from('listas_compras').update({ concluida: true }).eq('id', listaSel.id);
             }
             
-            toast.ok('Compra finalizada!');
+            toast.ok('Lista concluída!');
             
-            // Redireciona para NovaDespesa com os dados
+            // REDIRECIONAMENTO PARA DESPESAS
+            // Ajuste o nome 'NovaTransacao' para o nome exato da sua rota de despesas
             navigation.navigate('NovaTransacao', {
               valorPreenchido: totalCompra.toFixed(2).replace('.', ','),
               tituloPreenchido: `Compras: ${listaSel?.nome}`,
@@ -272,7 +275,7 @@ export default function ComprasHomeScreen({ navigation }: any) {
                 </View>
               );
             }}
-            ListEmptyComponent={<Text style={s.emptyText}>{estaConcluida ? 'Todos os itens foram comprados.' : 'Nenhum item adicionado.'}</Text>}
+            ListEmptyComponent={<Text style={s.emptyText}>{estaConcluida ? 'Lista concluída.' : 'Nenhum item.'}</Text>}
           />
 
           <View style={s.totalBar}>
@@ -285,11 +288,11 @@ export default function ComprasHomeScreen({ navigation }: any) {
               {tab === 'carrinho' && (
                 <TouchableOpacity style={s.finalizarBtn} onPress={handleFinalizar}>
                   <ShoppingCart size={18} color="#FFF" />
-                  <Text style={s.finalizarBtnText}>Finalizar e Lançar Despesa</Text>
+                  <Text style={s.finalizarBtnText}>Finalizar e Pagar</Text>
                 </TouchableOpacity>
               )}
               <View style={s.addRow}>
-                <TextInput style={s.addInput} placeholder="Nome do produto..." value={itemNome} onChangeText={setItemNome} onSubmitEditing={handleAddItem} />
+                <TextInput style={s.addInput} placeholder="Novo item..." value={itemNome} onChangeText={setItemNome} onSubmitEditing={handleAddItem} />
                 <TouchableOpacity style={s.addBtn} onPress={handleAddItem}><Plus size={20} color={Colors.textInverse} /></TouchableOpacity>
               </View>
             </>
@@ -322,19 +325,15 @@ export default function ComprasHomeScreen({ navigation }: any) {
             </TouchableOpacity>
           </TouchableOpacity>
         )}
-        ListEmptyComponent={
-          <View style={{ alignItems: 'center', marginTop: 50 }}>
-            {loading ? <ActivityIndicator color={Colors.primary} /> : <Text style={s.emptyText}>Crie sua primeira lista de compras!</Text>}
-          </View>
-        }
+        ListEmptyComponent={<Text style={s.emptyText}>{loading ? 'Carregando...' : 'Nenhuma lista'}</Text>}
       />
       <TouchableOpacity style={s.fab} onPress={() => setShowNova(true)}><Plus size={26} color={Colors.textInverse} /></TouchableOpacity>
       
       <Modal visible={showNova} transparent animationType="fade" onRequestClose={() => setShowNova(false)}>
         <View style={s.modalOverlay}>
           <View style={s.modalBox}>
-            <Text style={s.modalTitle}>Nova Lista de Compras</Text>
-            <TextInput style={s.modalInput} placeholder="Ex: Mercado do Mês" value={novoNome} onChangeText={setNovoNome} autoFocus />
+            <Text style={s.modalTitle}>Nova Lista</Text>
+            <TextInput style={s.modalInput} placeholder="Nome" value={novoNome} onChangeText={setNovoNome} autoFocus />
             <View style={s.modalBtnRow}>
               <TouchableOpacity style={[s.modalBtn, { backgroundColor: Colors.border }]} onPress={() => setShowNova(false)}>
                 <Text style={[s.modalBtnText, { color: Colors.textPrimary }]}>Cancelar</Text>

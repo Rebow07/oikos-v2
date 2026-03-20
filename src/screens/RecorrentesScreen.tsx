@@ -1,10 +1,10 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import {
   View, Text, FlatList, TouchableOpacity, StyleSheet, RefreshControl,
   Alert, TextInput, Modal, ScrollView, ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Plus, X, Pause, Play, Trash2, Zap, Calendar } from 'lucide-react-native';
+import { Plus, X, Pause, Play, Trash2, Zap } from 'lucide-react-native';
 import { useTheme, AppColors, Spacing, FontSize, FontWeight, Radius } from '../theme';
 import { useApp } from '../context/AppContext';
 import { useRecorrentes } from '../hooks/useRecorrentes';
@@ -14,7 +14,7 @@ import {
   excluirRecorrente,
   gerarRecorrentes,
 } from '../services/recorrentes.service';
-import { formatarMoeda } from '../utils';
+import { formatarMoeda, dataHoje } from '../utils';
 import { CATEGORIAS } from '../constants';
 import CategoriaIcon from '../components/CategoriaIcon';
 import type { Recorrente } from '../types';
@@ -40,18 +40,17 @@ function makeStyles(C: AppColors) {
     gerarBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: C.primary + '20', paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm, borderRadius: Radius.sm, gap: Spacing.xs },
     gerarBtnText: { fontSize: FontSize.sm, fontWeight: FontWeight.bold, color: C.primary },
     autoGenText: { fontSize: FontSize.xs, color: C.renda, textAlign: 'center', marginBottom: Spacing.sm },
-    list: { paddingHorizontal: Spacing.md },
+    list: { paddingHorizontal: Spacing.md, paddingBottom: 150 },
     card: { backgroundColor: C.surface, borderRadius: Radius.md, padding: Spacing.md, marginBottom: Spacing.sm, flexDirection: 'row', alignItems: 'center', borderWidth: StyleSheet.hairlineWidth, borderColor: C.border },
     cardInactive: { opacity: 0.45 },
     cardInfo: { flex: 1, marginLeft: Spacing.md },
     cardTitle: { fontSize: FontSize.md, fontWeight: FontWeight.semibold, color: C.textPrimary },
     cardSub: { fontSize: FontSize.xs, color: C.textMuted, marginTop: 2 },
-    cardRight: { alignItems: 'flex-end', gap: Spacing.xs },
+    cardRight: { alignItems: 'flex-end', gap: Spacing.sm },
     cardValor: { fontSize: FontSize.md, fontWeight: FontWeight.bold, color: C.despesa },
-    cardActions: { flexDirection: 'row', gap: Spacing.md },
-    cardPeriod: { fontSize: 9, color: C.primary, fontWeight: FontWeight.bold, backgroundColor: C.primary + '15', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, overflow: 'hidden' },
+    cardActions: { flexDirection: 'row', gap: 25 },
     emptyText: { fontSize: FontSize.md, color: C.textMuted, textAlign: 'center', paddingVertical: Spacing.xxl },
-    fab: { position: 'absolute', right: Spacing.md, bottom: Spacing.lg, width: 56, height: 56, borderRadius: 28, backgroundColor: C.primary, justifyContent: 'center', alignItems: 'center', elevation: 6, shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.3, shadowRadius: 4 },
+    fab: { position: 'absolute', right: Spacing.md, bottom: 40, width: 56, height: 56, borderRadius: 28, backgroundColor: C.primary, justifyContent: 'center', alignItems: 'center', elevation: 6 },
     modalOverlay: { flex: 1, backgroundColor: C.overlay, justifyContent: 'flex-end' },
     modalContent: { backgroundColor: C.background, borderTopLeftRadius: Radius.xl, borderTopRightRadius: Radius.xl, paddingBottom: Spacing.xxl, maxHeight: '85%' },
     modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: Spacing.md, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.border },
@@ -76,7 +75,7 @@ function makeStyles(C: AppColors) {
 
 export default function RecorrentesScreen() {
   const { Colors } = useTheme();
-  const s = makeStyles(Colors);
+  const s = useMemo(() => makeStyles(Colors), [Colors]);
   const insets = useSafeAreaInsets();
   const { usuario, grupoId, nomeUsuario } = useApp();
   const { recorrentes, totalMensal, carregando, recarregar } = useRecorrentes();
@@ -86,59 +85,69 @@ export default function RecorrentesScreen() {
   const [valor, setValor] = useState('');
   const [categoria, setCategoria] = useState('contas');
   const [diaVencimento, setDiaVencimento] = useState('10');
+  const [dataInicio, setDataInicio] = useState(dataHoje());
   const [periodicidade, setPeriodicidade] = useState<Periodicidade>('mensal');
   const [saving, setSaving] = useState(false);
   const [autoGenMsg, setAutoGenMsg] = useState('');
 
-  // Geração automática ao abrir a tela
   const autoGenDone = useRef(false);
+
   useEffect(() => {
     if (!grupoId || autoGenDone.current) return;
     autoGenDone.current = true;
-    (async () => {
+    const runAutoGen = async () => {
       try {
         const qtd = await gerarRecorrentes(grupoId);
         if (qtd > 0) {
-          setAutoGenMsg(`${qtd} despesa(s) recorrente(s) gerada(s) automaticamente.`);
+          setAutoGenMsg(`${qtd} despesa(s) gerada(s) automaticamente.`);
           recarregar();
           setTimeout(() => setAutoGenMsg(''), 5000);
         }
       } catch (err) {
-        console.error('Erro auto-gerar recorrentes:', err);
+        console.log('Geração automática silenciosa ignorada.');
       }
-    })();
-  }, [grupoId]);
+    };
+    runAutoGen();
+  }, [grupoId, recarregar]);
 
   const handleGerar = useCallback(async () => {
     try {
       const qtd = await gerarRecorrentes(grupoId);
-      Alert.alert('Pronto', qtd > 0 ? `${qtd} despesa(s) gerada(s).` : 'Nenhuma despesa pendente para gerar.');
+      Alert.alert('Sucesso', qtd > 0 ? `${qtd} novas despesas inseridas.` : 'Tudo em dia!');
       recarregar();
-    } catch {
-      Alert.alert('Erro', 'Falha ao gerar recorrentes.');
+    } catch (err) {
+      Alert.alert('Erro', 'Não foi possível gerar as despesas agora.');
     }
   }, [grupoId, recarregar]);
 
   const handleToggle = useCallback(async (r: Recorrente) => {
-    await atualizarRecorrente(r.id, { ativo: !r.ativo });
-    recarregar();
+    try {
+      await atualizarRecorrente(r.id, { ativo: !r.ativo });
+      recarregar();
+    } catch (err) {
+      Alert.alert('Erro', 'Falha ao mudar status.');
+    }
   }, [recarregar]);
 
   const handleExcluir = useCallback((r: Recorrente) => {
     Alert.alert('Excluir', `Remover "${r.titulo}"?`, [
       { text: 'Cancelar', style: 'cancel' },
-      { text: 'Excluir', style: 'destructive', onPress: async () => { await excluirRecorrente(r.id); recarregar(); } },
+      { text: 'Excluir', style: 'destructive', onPress: async () => { 
+        await excluirRecorrente(r.id); 
+        recarregar(); 
+      }},
     ]);
   }, [recarregar]);
 
   const handleSalvar = useCallback(async () => {
     const valorNum = parseFloat(valor.replace(',', '.'));
     if (!titulo.trim() || isNaN(valorNum) || valorNum <= 0) {
-      Alert.alert('Erro', 'Preencha título e valor.');
+      Alert.alert('Aviso', 'Preencha um título e valor válidos.');
       return;
     }
     setSaving(true);
     try {
+      // ✅ CORREÇÃO: Adicionado 'cartao_id: null' para satisfazer o TypeScript
       await criarRecorrente({
         grupo_id: grupoId,
         criado_por: usuario.id,
@@ -150,55 +159,23 @@ export default function RecorrentesScreen() {
         dia_vencimento: parseInt(diaVencimento, 10) || 10,
         ativo: true,
         periodicidade,
+        criado_em: new Date().toISOString()
       });
       setShowModal(false);
       setTitulo('');
       setValor('');
-      setPeriodicidade('mensal');
       recarregar();
     } catch (err: any) {
-      Alert.alert('Erro', err.message);
+      Alert.alert('Erro ao salvar', err.message);
     } finally {
       setSaving(false);
     }
   }, [titulo, valor, categoria, diaVencimento, periodicidade, grupoId, usuario, nomeUsuario, recarregar]);
 
-  const getPeriodLabel = (p: string) => {
-    return PERIODICIDADES.find((x) => x.id === p)?.label || 'Mensal';
-  };
-
-  const renderItem = useCallback(({ item }: { item: Recorrente }) => {
-    const cat = CATEGORIAS.find((c) => c.id === item.categoria);
-    const period = (item as any).periodicidade || 'mensal';
-    return (
-      <View style={[s.card, !item.ativo && s.cardInactive]}>
-        <CategoriaIcon categoria={item.categoria} size={40} />
-        <View style={s.cardInfo}>
-          <Text style={s.cardTitle}>{item.titulo}</Text>
-          <Text style={s.cardSub}>{cat?.label || item.categoria} · Dia {item.dia_vencimento}</Text>
-          {period !== 'mensal' && <Text style={s.cardPeriod}>{getPeriodLabel(period).toUpperCase()}</Text>}
-        </View>
-        <View style={s.cardRight}>
-          <Text style={s.cardValor}>{formatarMoeda(item.valor)}</Text>
-          <View style={s.cardActions}>
-            <TouchableOpacity onPress={() => handleToggle(item)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              {item.ativo ? <Pause size={16} color={Colors.textMuted} /> : <Play size={16} color={Colors.renda} />}
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => handleExcluir(item)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <Trash2 size={16} color={Colors.despesa} />
-            </TouchableOpacity>
-          </View>
-        </View>
-      </View>
-    );
-  }, [s, Colors, handleToggle, handleExcluir]);
-
   return (
     <View style={[s.container, { paddingTop: insets.top }]}>
       <View style={s.header}>
-        <View style={s.titleRow}>
-          <Text style={s.title}>Recorrentes</Text>
-        </View>
+        <View style={s.titleRow}><Text style={s.title}>Recorrentes</Text></View>
         <View style={s.totalCard}>
           <View>
             <Text style={s.totalLabel}>Total mensal fixo</Text>
@@ -215,34 +192,57 @@ export default function RecorrentesScreen() {
       <FlatList
         data={recorrentes}
         keyExtractor={(item) => item.id}
-        renderItem={renderItem}
+        renderItem={({ item }) => (
+          <View style={[s.card, !item.ativo && s.cardInactive]}>
+            <CategoriaIcon categoria={item.categoria} size={40} />
+            <View style={s.cardInfo}>
+              <Text style={s.cardTitle}>{item.titulo}</Text>
+              <Text style={s.cardSub}>Vence dia {item.dia_vencimento}</Text>
+            </View>
+            <View style={s.cardRight}>
+              <Text style={s.cardValor}>{formatarMoeda(item.valor)}</Text>
+              <div style={s.cardActions}>
+                <TouchableOpacity onPress={() => handleToggle(item)} hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}>
+                  {item.ativo ? <Pause size={18} color={Colors.textMuted} /> : <Play size={18} color={Colors.renda} />}
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => handleExcluir(item)} hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}>
+                  <Trash2 size={18} color={Colors.despesa} />
+                </TouchableOpacity>
+              </div>
+            </View>
+          </View>
+        )}
         contentContainerStyle={s.list}
-        showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={carregando} onRefresh={recarregar} tintColor={Colors.primary} colors={[Colors.primary]} />}
-        ListEmptyComponent={<Text style={s.emptyText}>{carregando ? 'Carregando...' : 'Nenhuma despesa recorrente'}</Text>}
+        refreshControl={<RefreshControl refreshing={carregando} onRefresh={recarregar} tintColor={Colors.primary} />}
+        ListEmptyComponent={<Text style={s.emptyText}>Nenhuma conta cadastrada.</Text>}
       />
 
-      <TouchableOpacity style={s.fab} onPress={() => setShowModal(true)} activeOpacity={0.8}>
-        <Plus size={26} color={Colors.textInverse} />
+      <TouchableOpacity style={s.fab} onPress={() => setShowModal(true)}>
+        <Plus size={28} color="#FFF" />
       </TouchableOpacity>
 
       <Modal visible={showModal} transparent animationType="slide">
         <TouchableOpacity style={s.modalOverlay} activeOpacity={1} onPress={() => setShowModal(false)}>
           <View style={s.modalContent} onStartShouldSetResponder={() => true}>
             <View style={s.modalHeader}>
-              <Text style={s.modalTitle}>Nova Recorrente</Text>
-              <TouchableOpacity onPress={() => setShowModal(false)}><X size={22} color={Colors.textPrimary} /></TouchableOpacity>
+              <Text style={s.modalTitle}>Novo Molde</Text>
+              <TouchableOpacity onPress={() => setShowModal(false)}><X size={24} color={Colors.textPrimary} /></TouchableOpacity>
             </View>
             <ScrollView contentContainerStyle={s.modalScroll} keyboardShouldPersistTaps="handled">
               <Text style={s.label}>Título</Text>
-              <TextInput style={s.input} placeholder="Ex: Internet" placeholderTextColor={Colors.textMuted} value={titulo} onChangeText={setTitulo} />
-
+              <TextInput style={s.input} placeholder="Ex: Internet" value={titulo} onChangeText={setTitulo} />
               <Text style={s.label}>Valor (R$)</Text>
-              <TextInput style={s.input} placeholder="0,00" placeholderTextColor={Colors.textMuted} value={valor} onChangeText={setValor} keyboardType="decimal-pad" />
-
-              <Text style={s.label}>Dia de vencimento</Text>
-              <TextInput style={[s.input, { width: 80 }]} value={diaVencimento} onChangeText={(t) => setDiaVencimento(t.replace(/\D/g, '').slice(0, 2))} keyboardType="number-pad" maxLength={2} />
-
+              <TextInput style={s.input} placeholder="0,00" value={valor} onChangeText={setValor} keyboardType="decimal-pad" />
+              <View style={{flexDirection: 'row', gap: Spacing.md}}>
+                <View style={{flex: 1}}>
+                  <Text style={s.label}>Dia Venc.</Text>
+                  <TextInput style={s.input} value={diaVencimento} onChangeText={setDiaVencimento} keyboardType="number-pad" maxLength={2} />
+                </View>
+                <View style={{flex: 1}}>
+                  <Text style={s.label}>Add desde:</Text>
+                  <TextInput style={s.input} value={dataInicio} onChangeText={setDataInicio} placeholder="AAAA-MM-DD" />
+                </View>
+              </View>
               <Text style={s.label}>Periodicidade</Text>
               <View style={s.periodRow}>
                 {PERIODICIDADES.map((p) => (
@@ -251,19 +251,17 @@ export default function RecorrentesScreen() {
                   </TouchableOpacity>
                 ))}
               </View>
-
               <Text style={s.label}>Categoria</Text>
               <View style={s.catGrid}>
-                {CATEGORIAS.map((cat) => (
+                {CATEGORIAS.slice(0, 8).map((cat) => (
                   <TouchableOpacity key={cat.id} style={[s.catItem, categoria === cat.id && s.catItemSel]} onPress={() => setCategoria(cat.id)}>
                     <CategoriaIcon categoria={cat.id} size={28} />
                     <Text style={[s.catLabel, categoria === cat.id && s.catLabelSel]}>{cat.label}</Text>
                   </TouchableOpacity>
                 ))}
               </View>
-
               <TouchableOpacity style={[s.submitBtn, saving && { opacity: 0.5 }]} onPress={handleSalvar} disabled={saving}>
-                {saving ? <ActivityIndicator color={Colors.textInverse} /> : <Text style={s.submitBtnText}>Salvar</Text>}
+                {saving ? <ActivityIndicator color="#FFF" /> : <Text style={s.submitBtnText}>Criar Molde</Text>}
               </TouchableOpacity>
             </ScrollView>
           </View>

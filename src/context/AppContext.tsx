@@ -1,7 +1,6 @@
 import React, {
   createContext, useContext, useState, useEffect, useCallback, ReactNode, useMemo, useRef,
 } from 'react';
-import { AppState, AppStateStatus } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../services/supabase';
 import { gerarRecorrentes } from '../services/recorrentes.service';
@@ -52,10 +51,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [orcamentoMensal, setOrcamentoMensalState] = useState(0);
   const [filtroTempo, setFiltroTempo]         = useState<FiltroTempo>('mensal');
 
-  // ✅ CORREÇÃO: Removida a declaração duplicada que causava erro no build
-  const autoGenRef = useRef(false);
-
-  // ── Auth ────────────────────────────────────────────────────────────────────
+  // Controle para não gerar recorrentes várias vezes na mesma sessão
+  const autoGenRef = useRef<string | null>(null);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -70,8 +67,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return () => subscription.unsubscribe();
   }, []);
 
-  // ── AsyncStorage inicial ────────────────────────────────────────────────────
-
   useEffect(() => {
     Promise.all([
       AsyncStorage.getItem(KEYS.GRUPO_ID),
@@ -84,34 +79,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  // ── Carregar grupo + membros ────────────────────────────────────────────────
-
   const carregarGrupo = useCallback(async () => {
     if (!grupoId || !usuario) { setCarregandoGrupo(false); return; }
     try {
       setCarregandoGrupo(true);
-
-      const { data: grupoData } = await supabase
-        .from('grupos')
-        .select('*')
-        .eq('id', grupoId)
-        .single();
+      const { data: grupoData } = await supabase.from('grupos').select('*').eq('id', grupoId).single();
       if (grupoData) setGrupo(grupoData);
 
-      const { data: membrosDir, error: membrosErr } = await supabase
-        .from('membros')
-        .select('user_id, nome, grupo_ativo')
-        .eq('grupo_id', grupoId);
-
-      if (membrosErr) {
-        console.error('Erro buscar membros:', membrosErr.message);
-      } else if (membrosDir) {
-        const result = membrosDir
-          .filter((m: any) => m.grupo_ativo !== false)
-          .map((m: any) => ({ user_id: m.user_id, nome: m.nome || 'Sem nome' }));
+      const { data: membrosDir } = await supabase.from('membros').select('user_id, nome, grupo_ativo').eq('grupo_id', grupoId);
+      if (membrosDir) {
+        const result = membrosDir.filter((m: any) => m.grupo_ativo !== false).map((m: any) => ({ user_id: m.user_id, nome: m.nome || 'Sem nome' }));
         setMembros(result);
-
-        // ✅ Sincroniza nome do usuário logado a partir do banco[cite: 1]
         const eu = result.find((m: Membro) => m.user_id === usuario.id);
         if (eu && eu.nome && eu.nome !== 'Sem nome' && eu.nome !== 'Novo membro') {
           setNomeUsuarioState(eu.nome);
@@ -119,69 +97,35 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
       }
 
-      // Geração automática de recorrentes (uma vez por sessão)
-      if (!autoGenRef.current) {
-        autoGenRef.current = true;
-        try {
-          const qtd = await gerarRecorrentes(grupoId);
-          if (qtd > 0) console.log(`Auto-geradas ${qtd} despesas recorrentes`);
-        } catch (err) {
-          console.error('Erro auto-gerar recorrentes:', err);
-        }
+      // Geração automática silenciosa (apenas uma vez por grupo selecionado)
+      if (autoGenRef.current !== grupoId) {
+        autoGenRef.current = grupoId;
+        gerarRecorrentes(grupoId).catch(() => console.log("Geração automática pendente ou falhou."));
       }
-    } catch (err) {
-      console.error('Erro carregar grupo:', err);
-    } finally {
-      setCarregandoGrupo(false);
+    } catch (err) { 
+      console.error("Erro ao carregar dados do grupo:", err); 
+    } finally { 
+      setCarregandoGrupo(false); 
     }
   }, [grupoId, usuario]);
 
   useEffect(() => { if (usuario) carregarGrupo(); }, [usuario, grupoId, carregarGrupo]);
 
-  // ── Listar todos os grupos do usuário ───────────────────────────────────────
-
   useEffect(() => {
     if (!usuario) return;
-    (async () => {
-      try {
-        const { data } = await supabase.rpc('listar_grupos_usuario', { p_user_id: usuario.id });
-        if (data) setTodosOsGrupos(data);
-      } catch {
-        const { data: memData } = await supabase
-          .from('membros')
-          .select('grupo_id')
-          .eq('user_id', usuario.id)
-          .eq('grupo_ativo', true);
-        if (memData) {
-          const ids = memData.map((m: any) => m.grupo_id);
-          const { data: g } = await supabase.from('grupos').select('id, nome').in('id', ids);
-          if (g) setTodosOsGrupos(g);
-        }
-      }
-    })();
+    supabase.rpc('listar_grupos_usuario', { p_user_id: usuario.id }).then(({ data }) => { if (data) setTodosOsGrupos(data); });
   }, [usuario]);
-
-  // ── Recarrega ao voltar do background ──────────────────────────────────────
-
-  useEffect(() => {
-    const h = (state: AppStateStatus) => { if (state === 'active' && usuario) carregarGrupo(); };
-    const sub = AppState.addEventListener('change', h);
-    return () => sub.remove();
-  }, [usuario, carregarGrupo]);
-
-  // ── Ações ───────────────────────────────────────────────────────────────────
 
   const sair = useCallback(async () => {
     await supabase.auth.signOut();
     setSessao(null);
     setUsuario(null);
     setNomeUsuarioState('');
-    autoGenRef.current = false;
+    autoGenRef.current = null;
   }, []);
 
   const trocarGrupo = useCallback(async (id: string) => {
     setGrupoId(id);
-    autoGenRef.current = false;
     await AsyncStorage.setItem(KEYS.GRUPO_ID, id);
   }, []);
 
@@ -193,51 +137,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const setNomeUsuario = useCallback(async (nome: string): Promise<void> => {
     const nomeLimpo = nome.trim();
     if (!nomeLimpo) return;
-
     setNomeUsuarioState(nomeLimpo);
     AsyncStorage.setItem(KEYS.NOME, nomeLimpo).catch(() => {});
-
     if (usuario?.id && grupoId) {
-      const { error } = await supabase
-        .from('membros')
-        .update({ nome: nomeLimpo })
-        .eq('user_id', usuario.id)
-        .eq('grupo_id', grupoId);
-
-      if (error) {
-        console.error('Erro ao salvar nome no banco:', error.message);
-        throw new Error('Não foi possível salvar o nome. Tente novamente.');
-      }
+      await supabase.from('membros').update({ nome: nomeLimpo }).eq('user_id', usuario.id).eq('grupo_id', grupoId);
     }
   }, [usuario, grupoId]);
 
   const getNomeMembro = useCallback((userId: string): string => {
-    const m = membros.find((mb) => mb.user_id === userId);
-    return m?.nome || 'Desconhecido';
+    return membros.find((mb) => mb.user_id === userId)?.nome || 'Desconhecido';
   }, [membros]);
 
-  const qtdMembros = membros.length;
-
-  const value = useMemo<AppContextData>(() => ({
+  const value = useMemo(() => ({
     sessao, usuario, carregandoAuth, sair,
     grupo, grupoId, carregandoGrupo,
-    membros, qtdMembros, nomeUsuario, setNomeUsuario, getNomeMembro,
+    membros, qtdMembros: membros.length, nomeUsuario, setNomeUsuario, getNomeMembro,
     mesSelecionado, setMesSelecionado, anoSelecionado, setAnoSelecionado,
     orcamentoMensal, setOrcamentoMensal,
     todosOsGrupos, trocarGrupo,
     filtroTempo, setFiltroTempo,
-  }), [
-    sessao, usuario, carregandoAuth, sair,
-    grupo, grupoId, carregandoGrupo,
-    membros, qtdMembros, nomeUsuario, setNomeUsuario, getNomeMembro,
-    mesSelecionado, anoSelecionado,
-    orcamentoMensal, setOrcamentoMensal,
-    todosOsGrupos, trocarGrupo,
-    filtroTempo,
-  ]);
+  }), [sessao, usuario, carregandoAuth, sair, grupo, grupoId, carregandoGrupo, membros, nomeUsuario, setNomeUsuario, getNomeMembro, mesSelecionado, anoSelecionado, orcamentoMensal, setOrcamentoMensal, todosOsGrupos, trocarGrupo, filtroTempo]);
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }
 
 export function useApp() { return useContext(AppContext); }
-export default AppContext;

@@ -12,7 +12,9 @@ export async function buscarRecorrentes(grupoId: string): Promise<Recorrente[]> 
   return (data as Recorrente[]) || [];
 }
 
-export async function criarRecorrente(recorrente: Omit<Recorrente, 'id' | 'ultima_geracao'>): Promise<Recorrente> {
+export async function criarRecorrente(
+  recorrente: Omit<Recorrente, 'id' | 'ultima_geracao'>
+): Promise<Recorrente> {
   const { data, error } = await supabase
     .from('recorrentes')
     .insert(recorrente)
@@ -23,15 +25,8 @@ export async function criarRecorrente(recorrente: Omit<Recorrente, 'id' | 'ultim
   return data as Recorrente;
 }
 
-export async function atualizarRecorrente(
-  id: string,
-  updates: Partial<Recorrente>,
-): Promise<void> {
-  const { error } = await supabase
-    .from('recorrentes')
-    .update(updates)
-    .eq('id', id);
-
+export async function atualizarRecorrente(id: string, updates: Partial<Recorrente>): Promise<void> {
+  const { error } = await supabase.from('recorrentes').update(updates).eq('id', id);
   if (error) throw error;
 }
 
