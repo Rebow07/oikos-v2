@@ -18,7 +18,6 @@ interface AppContextData {
   membros: Membro[];
   qtdMembros: number;
   nomeUsuario: string;
-  // ✅ agora retorna Promise para que o chamador saiba quando terminou
   setNomeUsuario: (nome: string) => Promise<void>;
   getNomeMembro: (userId: string) => string;
   mesSelecionado: number;
@@ -46,20 +45,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [carregandoGrupo, setCarregandoGrupo] = useState(true);
   const [todosOsGrupos, setTodosOsGrupos]     = useState<GrupoItem[]>([]);
   const [membros, setMembros]                 = useState<Membro[]>([]);
-  const [nomeUsuario, setNomeUsuarioState]     = useState('');
+  const [nomeUsuario, setNomeUsuarioState]    = useState('');
   const agora = new Date();
   const [mesSelecionado, setMesSelecionado]   = useState(agora.getMonth() + 1);
   const [anoSelecionado, setAnoSelecionado]   = useState(agora.getFullYear());
   const [orcamentoMensal, setOrcamentoMensalState] = useState(0);
   const [filtroTempo, setFiltroTempo]         = useState<FiltroTempo>('mensal');
 
-  // Flag para geração automática de recorrentes (uma vez por sessão)
+  // ✅ CORREÇÃO: Removida a declaração duplicada que causava erro no build
   const autoGenRef = useRef(false);
 
   // ── Auth ────────────────────────────────────────────────────────────────────
-
-  // Flag para geração automática de recorrentes (uma vez por sessão)
-  const autoGenRef = useRef(false);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -115,10 +111,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           .map((m: any) => ({ user_id: m.user_id, nome: m.nome || 'Sem nome' }));
         setMembros(result);
 
-<<<<<<< HEAD
-=======
-        // Sincroniza nome do usuário logado a partir do banco (fonte de verdade)
->>>>>>> 68d4f0e (fix: toast integration, type fixes and rpc support)
+        // ✅ Sincroniza nome do usuário logado a partir do banco[cite: 1]
         const eu = result.find((m: Membro) => m.user_id === usuario.id);
         if (eu && eu.nome && eu.nome !== 'Sem nome' && eu.nome !== 'Novo membro') {
           setNomeUsuarioState(eu.nome);
@@ -131,13 +124,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         autoGenRef.current = true;
         try {
           const qtd = await gerarRecorrentes(grupoId);
-<<<<<<< HEAD
-          if (qtd > 0) {
-            console.log(`Auto-geradas ${qtd} despesas recorrentes`);
-          }
-=======
           if (qtd > 0) console.log(`Auto-geradas ${qtd} despesas recorrentes`);
->>>>>>> 68d4f0e (fix: toast integration, type fixes and rpc support)
         } catch (err) {
           console.error('Erro auto-gerar recorrentes:', err);
         }
@@ -160,7 +147,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const { data } = await supabase.rpc('listar_grupos_usuario', { p_user_id: usuario.id });
         if (data) setTodosOsGrupos(data);
       } catch {
-        // Fallback: busca manual
         const { data: memData } = await supabase
           .from('membros')
           .select('grupo_id')
@@ -183,33 +169,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return () => sub.remove();
   }, [usuario, carregarGrupo]);
 
-<<<<<<< HEAD
-=======
   // ── Ações ───────────────────────────────────────────────────────────────────
 
->>>>>>> 68d4f0e (fix: toast integration, type fixes and rpc support)
   const sair = useCallback(async () => {
     await supabase.auth.signOut();
     setSessao(null);
     setUsuario(null);
-<<<<<<< HEAD
-    autoGenRef.current = false;
-  }, []);
-
-  const trocarGrupo = useCallback(async (id: string) => {
-    setGrupoId(id);
-    autoGenRef.current = false; // Permitir auto-gerar no novo grupo
-    await AsyncStorage.setItem(KEYS.GRUPO_ID, id);
-  }, []);
-
-  const setOrcamentoMensal = useCallback((v: number) => { setOrcamentoMensalState(v); AsyncStorage.setItem(KEYS.ORCAMENTO, String(v)).catch(() => {}); }, []);
-  const setNomeUsuario = useCallback((n: string) => { setNomeUsuarioState(n); AsyncStorage.setItem(KEYS.NOME, n).catch(() => {}); }, []);
-=======
     setNomeUsuarioState('');
     autoGenRef.current = false;
   }, []);
 
-  // ✅ FIX: trocarGrupo tinha "nome" na assinatura mas nunca usava — removido
   const trocarGrupo = useCallback(async (id: string) => {
     setGrupoId(id);
     autoGenRef.current = false;
@@ -221,26 +190,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     AsyncStorage.setItem(KEYS.ORCAMENTO, String(v)).catch(() => {});
   }, []);
 
-  /**
-   * ✅ FIX PRINCIPAL — Persistência de nome em 3 camadas:
-   *   1. Estado local (React) — imediato, UI atualiza na hora
-   *   2. AsyncStorage          — persiste offline / próxima abertura
-   *   3. Supabase tabela membros — fonte de verdade, sincroniza entre dispositivos
-   *
-   * Retorna Promise para que a tela de configurações possa exibir feedback
-   * de sucesso/erro sem ficar "no escuro".
-   */
   const setNomeUsuario = useCallback(async (nome: string): Promise<void> => {
     const nomeLimpo = nome.trim();
     if (!nomeLimpo) return;
 
-    // 1. Estado local — instantâneo
     setNomeUsuarioState(nomeLimpo);
-
-    // 2. AsyncStorage — offline/cache
     AsyncStorage.setItem(KEYS.NOME, nomeLimpo).catch(() => {});
 
-    // 3. Supabase — fonte de verdade entre dispositivos
     if (usuario?.id && grupoId) {
       const { error } = await supabase
         .from('membros')
@@ -250,12 +206,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       if (error) {
         console.error('Erro ao salvar nome no banco:', error.message);
-        // Re-lança para que a tela possa exibir Alert/Toast de erro
         throw new Error('Não foi possível salvar o nome. Tente novamente.');
       }
     }
   }, [usuario, grupoId]);
->>>>>>> 68d4f0e (fix: toast integration, type fixes and rpc support)
 
   const getNomeMembro = useCallback((userId: string): string => {
     const m = membros.find((mb) => mb.user_id === userId);
@@ -263,8 +217,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [membros]);
 
   const qtdMembros = membros.length;
-
-  // ── Context value ───────────────────────────────────────────────────────────
 
   const value = useMemo<AppContextData>(() => ({
     sessao, usuario, carregandoAuth, sair,
