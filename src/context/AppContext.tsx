@@ -18,7 +18,8 @@ interface AppContextData {
   membros: Membro[];
   qtdMembros: number;
   nomeUsuario: string;
-  setNomeUsuario: (nome: string) => void;
+  // ✅ agora retorna Promise para que o chamador saiba quando terminou
+  setNomeUsuario: (nome: string) => Promise<void>;
   getNomeMembro: (userId: string) => string;
   mesSelecionado: number;
   setMesSelecionado: (m: number) => void;
@@ -27,7 +28,7 @@ interface AppContextData {
   orcamentoMensal: number;
   setOrcamentoMensal: (v: number) => void;
   todosOsGrupos: GrupoItem[];
-  trocarGrupo: (id: string, nome: string) => Promise<void>;
+  trocarGrupo: (id: string) => Promise<void>;
   filtroTempo: FiltroTempo;
   setFiltroTempo: (f: FiltroTempo) => void;
 }
@@ -37,33 +38,43 @@ const KEYS = { GRUPO_ID: '@rebow_grupo_id', ORCAMENTO: '@rebow_orcamento', NOME:
 const DEFAULT_GRUPO_ID = process.env.EXPO_PUBLIC_DEFAULT_GRUPO_ID || '';
 
 export function AppProvider({ children }: { children: ReactNode }) {
-  const [sessao, setSessao] = useState<any | null>(null);
-  const [usuario, setUsuario] = useState<any | null>(null);
-  const [carregandoAuth, setCarregandoAuth] = useState(true);
-  const [grupo, setGrupo] = useState<Grupo | null>(null);
-  const [grupoId, setGrupoId] = useState(DEFAULT_GRUPO_ID);
+  const [sessao, setSessao]                   = useState<any | null>(null);
+  const [usuario, setUsuario]                 = useState<any | null>(null);
+  const [carregandoAuth, setCarregandoAuth]   = useState(true);
+  const [grupo, setGrupo]                     = useState<Grupo | null>(null);
+  const [grupoId, setGrupoId]                 = useState(DEFAULT_GRUPO_ID);
   const [carregandoGrupo, setCarregandoGrupo] = useState(true);
-  const [todosOsGrupos, setTodosOsGrupos] = useState<GrupoItem[]>([]);
-  const [membros, setMembros] = useState<Membro[]>([]);
-  const [nomeUsuario, setNomeUsuarioState] = useState('');
+  const [todosOsGrupos, setTodosOsGrupos]     = useState<GrupoItem[]>([]);
+  const [membros, setMembros]                 = useState<Membro[]>([]);
+  const [nomeUsuario, setNomeUsuarioState]     = useState('');
   const agora = new Date();
-  const [mesSelecionado, setMesSelecionado] = useState(agora.getMonth() + 1);
-  const [anoSelecionado, setAnoSelecionado] = useState(agora.getFullYear());
+  const [mesSelecionado, setMesSelecionado]   = useState(agora.getMonth() + 1);
+  const [anoSelecionado, setAnoSelecionado]   = useState(agora.getFullYear());
   const [orcamentoMensal, setOrcamentoMensalState] = useState(0);
-  const [filtroTempo, setFiltroTempo] = useState<FiltroTempo>('mensal');
+  const [filtroTempo, setFiltroTempo]         = useState<FiltroTempo>('mensal');
+
+  // Flag para geração automática de recorrentes (uma vez por sessão)
+  const autoGenRef = useRef(false);
+
+  // ── Auth ────────────────────────────────────────────────────────────────────
 
   // Flag para geração automática de recorrentes (uma vez por sessão)
   const autoGenRef = useRef(false);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
-      setSessao(session); setUsuario(session?.user ?? null); setCarregandoAuth(false);
+      setSessao(session);
+      setUsuario(session?.user ?? null);
+      setCarregandoAuth(false);
     });
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, session) => {
-      setSessao(session); setUsuario(session?.user ?? null);
+      setSessao(session);
+      setUsuario(session?.user ?? null);
     });
     return () => subscription.unsubscribe();
   }, []);
+
+  // ── AsyncStorage inicial ────────────────────────────────────────────────────
 
   useEffect(() => {
     Promise.all([
@@ -77,11 +88,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  // ── Carregar grupo + membros ────────────────────────────────────────────────
+
   const carregarGrupo = useCallback(async () => {
     if (!grupoId || !usuario) { setCarregandoGrupo(false); return; }
     try {
       setCarregandoGrupo(true);
-      const { data: grupoData } = await supabase.from('grupos').select('*').eq('id', grupoId).single();
+
+      const { data: grupoData } = await supabase
+        .from('grupos')
+        .select('*')
+        .eq('id', grupoId)
+        .single();
       if (grupoData) setGrupo(grupoData);
 
       const { data: membrosDir, error: membrosErr } = await supabase
@@ -97,6 +115,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
           .map((m: any) => ({ user_id: m.user_id, nome: m.nome || 'Sem nome' }));
         setMembros(result);
 
+<<<<<<< HEAD
+=======
+        // Sincroniza nome do usuário logado a partir do banco (fonte de verdade)
+>>>>>>> 68d4f0e (fix: toast integration, type fixes and rpc support)
         const eu = result.find((m: Membro) => m.user_id === usuario.id);
         if (eu && eu.nome && eu.nome !== 'Sem nome' && eu.nome !== 'Novo membro') {
           setNomeUsuarioState(eu.nome);
@@ -109,9 +131,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
         autoGenRef.current = true;
         try {
           const qtd = await gerarRecorrentes(grupoId);
+<<<<<<< HEAD
           if (qtd > 0) {
             console.log(`Auto-geradas ${qtd} despesas recorrentes`);
           }
+=======
+          if (qtd > 0) console.log(`Auto-geradas ${qtd} despesas recorrentes`);
+>>>>>>> 68d4f0e (fix: toast integration, type fixes and rpc support)
         } catch (err) {
           console.error('Erro auto-gerar recorrentes:', err);
         }
@@ -125,6 +151,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => { if (usuario) carregarGrupo(); }, [usuario, grupoId, carregarGrupo]);
 
+  // ── Listar todos os grupos do usuário ───────────────────────────────────────
+
   useEffect(() => {
     if (!usuario) return;
     (async () => {
@@ -132,7 +160,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const { data } = await supabase.rpc('listar_grupos_usuario', { p_user_id: usuario.id });
         if (data) setTodosOsGrupos(data);
       } catch {
-        const { data: memData } = await supabase.from('membros').select('grupo_id').eq('user_id', usuario.id).eq('grupo_ativo', true);
+        // Fallback: busca manual
+        const { data: memData } = await supabase
+          .from('membros')
+          .select('grupo_id')
+          .eq('user_id', usuario.id)
+          .eq('grupo_ativo', true);
         if (memData) {
           const ids = memData.map((m: any) => m.grupo_id);
           const { data: g } = await supabase.from('grupos').select('id, nome').in('id', ids);
@@ -142,16 +175,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
     })();
   }, [usuario]);
 
+  // ── Recarrega ao voltar do background ──────────────────────────────────────
+
   useEffect(() => {
     const h = (state: AppStateStatus) => { if (state === 'active' && usuario) carregarGrupo(); };
     const sub = AppState.addEventListener('change', h);
     return () => sub.remove();
   }, [usuario, carregarGrupo]);
 
+<<<<<<< HEAD
+=======
+  // ── Ações ───────────────────────────────────────────────────────────────────
+
+>>>>>>> 68d4f0e (fix: toast integration, type fixes and rpc support)
   const sair = useCallback(async () => {
     await supabase.auth.signOut();
     setSessao(null);
     setUsuario(null);
+<<<<<<< HEAD
     autoGenRef.current = false;
   }, []);
 
@@ -163,6 +204,58 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const setOrcamentoMensal = useCallback((v: number) => { setOrcamentoMensalState(v); AsyncStorage.setItem(KEYS.ORCAMENTO, String(v)).catch(() => {}); }, []);
   const setNomeUsuario = useCallback((n: string) => { setNomeUsuarioState(n); AsyncStorage.setItem(KEYS.NOME, n).catch(() => {}); }, []);
+=======
+    setNomeUsuarioState('');
+    autoGenRef.current = false;
+  }, []);
+
+  // ✅ FIX: trocarGrupo tinha "nome" na assinatura mas nunca usava — removido
+  const trocarGrupo = useCallback(async (id: string) => {
+    setGrupoId(id);
+    autoGenRef.current = false;
+    await AsyncStorage.setItem(KEYS.GRUPO_ID, id);
+  }, []);
+
+  const setOrcamentoMensal = useCallback((v: number) => {
+    setOrcamentoMensalState(v);
+    AsyncStorage.setItem(KEYS.ORCAMENTO, String(v)).catch(() => {});
+  }, []);
+
+  /**
+   * ✅ FIX PRINCIPAL — Persistência de nome em 3 camadas:
+   *   1. Estado local (React) — imediato, UI atualiza na hora
+   *   2. AsyncStorage          — persiste offline / próxima abertura
+   *   3. Supabase tabela membros — fonte de verdade, sincroniza entre dispositivos
+   *
+   * Retorna Promise para que a tela de configurações possa exibir feedback
+   * de sucesso/erro sem ficar "no escuro".
+   */
+  const setNomeUsuario = useCallback(async (nome: string): Promise<void> => {
+    const nomeLimpo = nome.trim();
+    if (!nomeLimpo) return;
+
+    // 1. Estado local — instantâneo
+    setNomeUsuarioState(nomeLimpo);
+
+    // 2. AsyncStorage — offline/cache
+    AsyncStorage.setItem(KEYS.NOME, nomeLimpo).catch(() => {});
+
+    // 3. Supabase — fonte de verdade entre dispositivos
+    if (usuario?.id && grupoId) {
+      const { error } = await supabase
+        .from('membros')
+        .update({ nome: nomeLimpo })
+        .eq('user_id', usuario.id)
+        .eq('grupo_id', grupoId);
+
+      if (error) {
+        console.error('Erro ao salvar nome no banco:', error.message);
+        // Re-lança para que a tela possa exibir Alert/Toast de erro
+        throw new Error('Não foi possível salvar o nome. Tente novamente.');
+      }
+    }
+  }, [usuario, grupoId]);
+>>>>>>> 68d4f0e (fix: toast integration, type fixes and rpc support)
 
   const getNomeMembro = useCallback((userId: string): string => {
     const m = membros.find((mb) => mb.user_id === userId);
@@ -171,17 +264,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const qtdMembros = membros.length;
 
+  // ── Context value ───────────────────────────────────────────────────────────
+
   const value = useMemo<AppContextData>(() => ({
     sessao, usuario, carregandoAuth, sair,
     grupo, grupoId, carregandoGrupo,
     membros, qtdMembros, nomeUsuario, setNomeUsuario, getNomeMembro,
     mesSelecionado, setMesSelecionado, anoSelecionado, setAnoSelecionado,
-    orcamentoMensal, setOrcamentoMensal, todosOsGrupos, trocarGrupo, filtroTempo, setFiltroTempo,
+    orcamentoMensal, setOrcamentoMensal,
+    todosOsGrupos, trocarGrupo,
+    filtroTempo, setFiltroTempo,
   }), [
-    sessao, usuario, carregandoAuth, sair, grupo, grupoId, carregandoGrupo,
+    sessao, usuario, carregandoAuth, sair,
+    grupo, grupoId, carregandoGrupo,
     membros, qtdMembros, nomeUsuario, setNomeUsuario, getNomeMembro,
-    mesSelecionado, anoSelecionado, orcamentoMensal, setOrcamentoMensal,
-    todosOsGrupos, trocarGrupo, filtroTempo,
+    mesSelecionado, anoSelecionado,
+    orcamentoMensal, setOrcamentoMensal,
+    todosOsGrupos, trocarGrupo,
+    filtroTempo,
   ]);
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

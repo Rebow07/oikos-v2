@@ -1,16 +1,18 @@
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet,
-  Alert, ActivityIndicator, Switch, Modal, Platform,
+  ActivityIndicator, Switch, Modal,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { X, CreditCard, ChevronDown, Calendar as CalendarIcon } from 'lucide-react-native';
-import * as Calendar from 'expo-calendar'; 
+import { X, CreditCard, ChevronDown } from 'lucide-react-native';
+import * as Calendar from 'expo-calendar';
 import { useTheme, AppColors, Spacing, FontSize, FontWeight, Radius } from '../theme';
 import { useApp } from '../context/AppContext';
+import { useCacheInvalidation, CACHE_KEYS } from '../context/CacheContext';
 import { criarTransacao, criarTransacoesBatch } from '../services/transacoes.service';
 import { CATEGORIAS } from '../constants';
 import { dataHoje, gerarUUID, formatarMoeda } from '../utils';
+import { toast } from '../utils/toast';
 import CategoriaIcon from '../components/CategoriaIcon';
 import type { Cartao } from '../types';
 import { supabase } from '../services/supabase';
@@ -35,7 +37,6 @@ function makeStyles(C: AppColors) {
     cardSelector: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, backgroundColor: C.surface, borderRadius: Radius.sm, paddingHorizontal: Spacing.md, paddingVertical: Spacing.md, borderWidth: 1, borderColor: C.border },
     cardDot: { width: 12, height: 12, borderRadius: 6 },
     cardName: { flex: 1, fontSize: FontSize.md, color: C.textPrimary },
-    cardLimit: { fontSize: FontSize.xs, color: C.textMuted, marginTop: 2 },
     submitBtn: { backgroundColor: C.primary, borderRadius: Radius.md, paddingVertical: Spacing.md, alignItems: 'center', marginTop: Spacing.xl },
     submitBtnDisabled: { opacity: 0.5 },
     submitBtnText: { fontSize: FontSize.lg, fontWeight: FontWeight.bold, color: C.textInverse },
@@ -54,9 +55,6 @@ function makeStyles(C: AppColors) {
     limiteLabel: { fontSize: FontSize.xs, color: C.textMuted },
     limiteValue: { fontSize: FontSize.xs, fontWeight: FontWeight.bold },
     parcelaPreview: { backgroundColor: C.surface, borderRadius: Radius.sm, padding: Spacing.md, marginTop: Spacing.sm, borderWidth: 1, borderColor: C.primary + '40' },
-    parcelaPreviewRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-    parcelaPreviewLabel: { fontSize: FontSize.sm, color: C.textSecondary },
-    parcelaPreviewValue: { fontSize: FontSize.lg, fontWeight: FontWeight.bold, color: C.primary },
     parcelaEditRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginTop: Spacing.sm },
     parcelaEditLabel: { fontSize: FontSize.xs, color: C.textMuted },
     parcelaEditInput: { width: 100, textAlign: 'center', fontSize: FontSize.md, fontWeight: FontWeight.bold },
@@ -66,20 +64,19 @@ function makeStyles(C: AppColors) {
 
 export default function NovaTransacaoScreen({ route, navigation }: any) {
   const { Colors } = useTheme();
-  const s = makeStyles(Colors);
+  const s = useMemo(() => makeStyles(Colors), [Colors]);
   const insets = useSafeAreaInsets();
   const { usuario, grupoId, nomeUsuario } = useApp();
+  const { invalidarPorPrefixo } = useCacheInvalidation();
 
   const params = route?.params || {};
-
   const [titulo, setTitulo] = useState(params.tituloPreenchido || '');
   const [valor, setValor] = useState(params.valorPreenchido || '');
   const [categoria, setCategoria] = useState(params.categoriaPreenchida || 'outros');
-  const [data, setData] = useState(dataHoje());
   const [fixo, setFixo] = useState(false);
   const [parcelado, setParcelado] = useState(false);
   const [numParcelas, setNumParcelas] = useState('2');
-  const [valorParcelaOverride, setValorParcelaOverride] = useState(''); 
+  const [valorParcelaOverride, setValorParcelaOverride] = useState('');
   const [cartaoId, setCartaoId] = useState<string | null>(null);
   const [cartoes, setCartoes] = useState<Cartao[]>([]);
   const [limiteDisponivel, setLimiteDisponivel] = useState<number | null>(null);
@@ -87,9 +84,10 @@ export default function NovaTransacaoScreen({ route, navigation }: any) {
   const [loading, setLoading] = useState(false);
   const [syncAgenda, setSyncAgenda] = useState(true);
 
-  const [diaInput, setDiaInput] = useState(data.split('-')[2]);
-  const [mesInput, setMesInput] = useState(data.split('-')[1]);
-  const [anoInput, setAnoInput] = useState(data.split('-')[0]);
+  const hoje = dataHoje().split('-');
+  const [diaInput, setDiaInput] = useState(hoje[2]);
+  const [mesInput, setMesInput] = useState(hoje[1]);
+  const [anoInput, setAnoInput] = useState(hoje[0]);
 
   useEffect(() => {
     supabase.from('cartoes').select('*').eq('grupo_id', grupoId).eq('ativo', true)
@@ -103,7 +101,6 @@ export default function NovaTransacaoScreen({ route, navigation }: any) {
   }, [cartaoId]);
 
   const cartaoSelecionado = cartoes.find((c) => c.id === cartaoId);
-
   const valorNum = parseFloat(valor.replace(',', '.')) || 0;
   const numParcelasNum = parseInt(numParcelas, 10) || 2;
 
@@ -114,47 +111,44 @@ export default function NovaTransacaoScreen({ route, navigation }: any) {
 
   const valorParcelaEfetivo = useMemo(() => {
     if (valorParcelaOverride) {
-      const parsed = parseFloat(valorParcelaOverride.replace(',', '.'));
-      if (!isNaN(parsed) && parsed > 0) return parsed;
+      const p = parseFloat(valorParcelaOverride.replace(',', '.'));
+      if (!isNaN(p) && p > 0) return p;
     }
     return valorParcelaCalculado;
   }, [valorParcelaOverride, valorParcelaCalculado]);
 
-  const totalComJuros = useMemo(() => {
-    return Math.round(valorParcelaEfetivo * numParcelasNum * 100) / 100;
-  }, [valorParcelaEfetivo, numParcelasNum]);
+  const totalComJuros = useMemo(() =>
+    Math.round(valorParcelaEfetivo * numParcelasNum * 100) / 100,
+    [valorParcelaEfetivo, numParcelasNum]);
 
   const temJuros = parcelado && totalComJuros > valorNum + 0.01;
 
-  const agendarNoGoogleCalendar = async (desc: string, dataEvento: Date, valorEv: number) => {
+  const agendarNoCalendar = async (desc: string, dataEvento: Date, val: number) => {
     try {
       const { status } = await Calendar.requestCalendarPermissionsAsync();
       if (status !== 'granted') return;
-
-      const calendars = await Calendar.getCalendarsAsync(Calendar.EntityTypes.EVENT);
-      const defaultCalendar = calendars.find(c => c.isPrimary) || calendars[0];
-
-      if (defaultCalendar) {
-        await Calendar.createEventAsync(defaultCalendar.id, {
-          title: `💰 ${desc} - R$ ${valorEv.toFixed(2)}`,
+      const cals = await Calendar.getCalendarsAsync(Calendar.EntityTypes.EVENT);
+      const cal = cals.find((c) => c.isPrimary) || cals[0];
+      if (cal) {
+        await Calendar.createEventAsync(cal.id, {
+          title: `💰 ${desc} - R$ ${val.toFixed(2)}`,
           startDate: dataEvento,
           endDate: new Date(dataEvento.getTime() + 60 * 60 * 1000),
           notes: 'Agendado automaticamente pelo Oikos Family',
-          alarms: [{ relativeOffset: -1440 }] 
         });
       }
     } catch (e) {
-      console.log('Erro ao agendar no Google:', e);
+      console.warn('Erro ao agendar no calendário:', e);
     }
   };
 
   const handleSalvar = useCallback(async () => {
-    if (!titulo.trim()) { Alert.alert('Erro', 'Informe o título.'); return; }
-    if (valorNum <= 0) { Alert.alert('Erro', 'Informe o valor.'); return; }
+    if (!titulo.trim()) { toast.aviso('Informe uma descrição.'); return; }
+    if (valorNum <= 0)  { toast.aviso('Informe um valor válido.'); return; }
 
     const valorTotalCompra = parcelado ? totalComJuros : valorNum;
     if (cartaoId && limiteDisponivel !== null && valorTotalCompra > limiteDisponivel) {
-      Alert.alert('Limite insuficiente', `O cartão ${cartaoSelecionado?.nome} não possui limite para o valor TOTAL de ${formatarMoeda(valorTotalCompra)}.`);
+      toast.aviso(`Limite insuficiente no ${cartaoSelecionado?.nome}.`, 'Erro');
       return;
     }
 
@@ -163,56 +157,43 @@ export default function NovaTransacaoScreen({ route, navigation }: any) {
       if (parcelado) {
         const parcelaGrupoId = gerarUUID();
         const transacoes = [];
-
         for (let i = 1; i <= numParcelasNum; i++) {
           const d = new Date(parseInt(anoInput), parseInt(mesInput) - 1 + (i - 1), parseInt(diaInput), 9, 0);
-          const dataP = d.toISOString().split('T')[0];
-          
           transacoes.push({
-            grupo_id: grupoId, 
-            criado_por: usuario.id,
-            criado_por_nome: nomeUsuario || null,
+            grupo_id: grupoId, criado_por: usuario.id, criado_por_nome: nomeUsuario || null,
             titulo: `${titulo.trim()} (${i}/${numParcelasNum})`,
-            valor: valorParcelaEfetivo, 
-            categoria, 
-            tipo: 'despesa' as const, // <-- CORREÇÃO AQUI (as const)
-            data: dataP, 
-            fixo: false, 
-            parcelado: true, 
-            cartao_id: cartaoId,
-            parcela_grupo_id: parcelaGrupoId, 
-            parcela_index: i,
+            valor: valorParcelaEfetivo, categoria, tipo: 'despesa' as const,
+            data: d.toISOString().split('T')[0], fixo: false, parcelado: true,
+            cartao_id: cartaoId, parcela_grupo_id: parcelaGrupoId, parcela_index: i,
           });
-
-          if (syncAgenda) await agendarNoGoogleCalendar(titulo, d, valorParcelaEfetivo);
+          if (syncAgenda) await agendarNoCalendar(titulo, d, valorParcelaEfetivo);
         }
         await criarTransacoesBatch(transacoes);
       } else {
         const dataFinal = `${anoInput}-${mesInput.padStart(2, '0')}-${diaInput.padStart(2, '0')}`;
         await criarTransacao({
-          grupo_id: grupoId, 
-          criado_por: usuario.id, 
-          criado_por_nome: nomeUsuario || null,
-          titulo: titulo.trim(),
-          valor: valorNum, 
-          categoria, 
-          tipo: 'despesa' as const, // <-- CORREÇÃO AQUI (as const)
-          data: dataFinal,
-          fixo, 
-          parcelado: false, 
-          cartao_id: cartaoId,
+          grupo_id: grupoId, criado_por: usuario.id, criado_por_nome: nomeUsuario || null,
+          titulo: titulo.trim(), valor: valorNum, categoria, tipo: 'despesa' as const,
+          data: dataFinal, fixo, parcelado: false, cartao_id: cartaoId,
         });
-        
         if (syncAgenda) {
           const dFinal = new Date(parseInt(anoInput), parseInt(mesInput) - 1, parseInt(diaInput), 9, 0);
-          await agendarNoGoogleCalendar(titulo, dFinal, valorNum);
+          await agendarNoCalendar(titulo, dFinal, valorNum);
         }
       }
+
+      invalidarPorPrefixo(CACHE_KEYS.transacoesPrefixo(grupoId));
+      toast.ok('Despesa salva com sucesso!');
       navigation.goBack();
     } catch (err: any) {
-      Alert.alert('Erro', err.message);
-    } finally { setLoading(false); }
-  }, [titulo, valorNum, categoria, anoInput, mesInput, diaInput, fixo, parcelado, numParcelasNum, valorParcelaEfetivo, totalComJuros, cartaoId, limiteDisponivel, syncAgenda, grupoId, usuario.id, nomeUsuario, navigation, cartaoSelecionado]);
+      toast.erro(err.message || 'Não foi possível salvar.');
+    } finally {
+      setLoading(false);
+    }
+  }, [titulo, valorNum, categoria, anoInput, mesInput, diaInput, fixo, parcelado,
+      numParcelasNum, valorParcelaEfetivo, totalComJuros, cartaoId, limiteDisponivel,
+      syncAgenda, grupoId, usuario, nomeUsuario, navigation, cartaoSelecionado,
+      invalidarPorPrefixo]);
 
   return (
     <View style={[s.container, { paddingTop: insets.top }]}>
@@ -223,10 +204,10 @@ export default function NovaTransacaoScreen({ route, navigation }: any) {
 
       <ScrollView contentContainerStyle={s.scroll} keyboardShouldPersistTaps="handled">
         <Text style={s.label}>Valor Total (R$)</Text>
-        <TextInput style={[s.input, s.valorInput]} placeholder="0,00" value={valor} onChangeText={setValor} keyboardType="decimal-pad" />
+        <TextInput style={[s.input, s.valorInput]} placeholder="0,00" placeholderTextColor={Colors.textMuted} value={valor} onChangeText={setValor} keyboardType="decimal-pad" />
 
         <Text style={s.label}>Descrição</Text>
-        <TextInput style={s.input} placeholder="Ex: Geladeira" value={titulo} onChangeText={setTitulo} />
+        <TextInput style={s.input} placeholder="Ex: Geladeira" placeholderTextColor={Colors.textMuted} value={titulo} onChangeText={setTitulo} />
 
         <Text style={s.label}>Categoria</Text>
         <View style={s.categoriaGrid}>
@@ -240,19 +221,31 @@ export default function NovaTransacaoScreen({ route, navigation }: any) {
 
         <Text style={s.label}>Data da Compra</Text>
         <View style={{ flexDirection: 'row', gap: Spacing.sm }}>
-          <TextInput style={[s.input, { flex: 1, textAlign: 'center' }]} value={diaInput} onChangeText={setDiaInput} keyboardType="number-pad" maxLength={2} />
-          <TextInput style={[s.input, { flex: 1, textAlign: 'center' }]} value={mesInput} onChangeText={setMesInput} keyboardType="number-pad" maxLength={2} />
-          <TextInput style={[s.input, { flex: 2, textAlign: 'center' }]} value={anoInput} onChangeText={setAnoInput} keyboardType="number-pad" maxLength={4} />
+          <TextInput style={[s.input, { flex: 1, textAlign: 'center' }]} value={diaInput} onChangeText={setDiaInput} keyboardType="number-pad" maxLength={2} placeholder="Dia" placeholderTextColor={Colors.textMuted} />
+          <TextInput style={[s.input, { flex: 1, textAlign: 'center' }]} value={mesInput} onChangeText={setMesInput} keyboardType="number-pad" maxLength={2} placeholder="Mês" placeholderTextColor={Colors.textMuted} />
+          <TextInput style={[s.input, { flex: 2, textAlign: 'center' }]} value={anoInput} onChangeText={setAnoInput} keyboardType="number-pad" maxLength={4} placeholder="Ano" placeholderTextColor={Colors.textMuted} />
         </View>
 
         <Text style={s.label}>Cartão</Text>
         <TouchableOpacity style={s.cardSelector} onPress={() => setShowCartaoModal(true)}>
-          <Text style={s.cardName}>{cartaoSelecionado?.nome || 'Selecionar Cartão'}</Text>
+          {cartaoSelecionado && <View style={[s.cardDot, { backgroundColor: cartaoSelecionado.cor }]} />}
+          <Text style={s.cardName}>{cartaoSelecionado?.nome || 'Selecionar Cartão (opcional)'}</Text>
           <ChevronDown size={18} color={Colors.textMuted} />
         </TouchableOpacity>
 
+        {cartaoSelecionado && limiteDisponivel !== null && (
+          <View style={s.limiteInfo}>
+            <View style={s.limiteRow}>
+              <Text style={s.limiteLabel}>Limite disponível</Text>
+              <Text style={[s.limiteValue, { color: limiteDisponivel > 0 ? Colors.renda : Colors.despesa }]}>
+                {formatarMoeda(limiteDisponivel)}
+              </Text>
+            </View>
+          </View>
+        )}
+
         <View style={[s.row, { marginTop: Spacing.lg }]}>
-          <Text style={s.rowLabel}>Sincronizar com Agenda Google</Text>
+          <Text style={s.rowLabel}>Sincronizar Agenda</Text>
           <Switch value={syncAgenda} onValueChange={setSyncAgenda} />
         </View>
 
@@ -264,14 +257,13 @@ export default function NovaTransacaoScreen({ route, navigation }: any) {
         {parcelado && (
           <View style={s.parcelaPreview}>
             <View style={s.parcelaRow}>
-              <Text style={s.parcelaLabel}>Nº de parcelas:</Text>
+              <Text style={s.parcelaLabel}>Nº parcelas:</Text>
               <TextInput style={[s.input, s.parcelaInput]} value={numParcelas} onChangeText={setNumParcelas} keyboardType="number-pad" />
             </View>
             <View style={s.parcelaEditRow}>
-              <Text style={s.parcelaEditLabel}>Valor de cada parcela (incluir juros se houver):</Text>
+              <Text style={s.parcelaEditLabel}>Valor/parcela:</Text>
               <TextInput style={[s.input, s.parcelaEditInput]} value={valorParcelaOverride || valorParcelaCalculado.toFixed(2)} onChangeText={setValorParcelaOverride} keyboardType="decimal-pad" />
             </View>
-            {temJuros && <Text style={s.parcelaTotalLabel}>Total real com juros: {formatarMoeda(totalComJuros)}</Text>}
           </View>
         )}
 
@@ -281,12 +273,22 @@ export default function NovaTransacaoScreen({ route, navigation }: any) {
       </ScrollView>
 
       <Modal visible={showCartaoModal} transparent animationType="slide">
-        <TouchableOpacity style={s.modalOverlay} onPress={() => setShowCartaoModal(false)}>
-          <View style={s.modalContent}>
+        <TouchableOpacity style={s.modalOverlay} activeOpacity={1} onPress={() => setShowCartaoModal(false)}>
+          <View style={s.modalContent} onStartShouldSetResponder={() => true}>
+            <View style={s.modalHeader}>
+              <Text style={s.modalTitle}>Selecionar Cartão</Text>
+              <TouchableOpacity onPress={() => setShowCartaoModal(false)}><X size={22} color={Colors.textPrimary} /></TouchableOpacity>
+            </View>
+            <TouchableOpacity style={s.modalItem} onPress={() => { setCartaoId(null); setShowCartaoModal(false); }}>
+              <Text style={[s.modalItemText, { color: Colors.textMuted }]}>Nenhum (débito/dinheiro)</Text>
+            </TouchableOpacity>
             {cartoes.map((c) => (
               <TouchableOpacity key={c.id} style={s.modalItem} onPress={() => { setCartaoId(c.id); setShowCartaoModal(false); }}>
                 <View style={[s.cardDot, { backgroundColor: c.cor }]} />
-                <Text style={s.modalItemText}>{c.nome} (Limite: {formatarMoeda(Number(c.limite))})</Text>
+                <View>
+                  <Text style={s.modalItemText}>{c.nome}</Text>
+                  <Text style={s.modalItemSub}>Limite: {formatarMoeda(Number(c.limite))}</Text>
+                </View>
               </TouchableOpacity>
             ))}
           </View>

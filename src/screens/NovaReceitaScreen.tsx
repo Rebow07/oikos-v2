@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -6,7 +6,6 @@ import {
   TouchableOpacity,
   ScrollView,
   StyleSheet,
-  Alert,
   ActivityIndicator,
   Switch,
 } from 'react-native';
@@ -14,10 +13,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { X } from 'lucide-react-native';
 import { useTheme, AppColors, Spacing, FontSize, FontWeight, Radius } from '../theme';
 import { useApp } from '../context/AppContext';
+import { useCacheInvalidation, CACHE_KEYS } from '../context/CacheContext'; // Importando Cache
 import { criarReceita } from '../services/receitas.service';
 import { criarTransacao } from '../services/transacoes.service';
 import { CATEGORIAS_RECEITA } from '../constants';
 import { dataHoje } from '../utils';
+import { toast } from '../utils/toast'; // Importando Toast
 import CategoriaIcon from '../components/CategoriaIcon';
 
 function makeStyles(C: AppColors) {
@@ -46,9 +47,10 @@ function makeStyles(C: AppColors) {
 
 export default function NovaReceitaScreen({ navigation }: any) {
   const { Colors } = useTheme();
-  const s = makeStyles(Colors);
+  const s = useMemo(() => makeStyles(Colors), [Colors]);
   const insets = useSafeAreaInsets();
   const { usuario, grupoId, nomeUsuario } = useApp();
+  const { invalidarPorPrefixo } = useCacheInvalidation();
 
   const [nome, setNome] = useState('');
   const [valor, setValor] = useState('');
@@ -59,13 +61,20 @@ export default function NovaReceitaScreen({ navigation }: any) {
 
   const handleSalvar = useCallback(async () => {
     const valorNum = parseFloat(valor.replace(',', '.'));
-    if (!nome.trim()) { Alert.alert('Erro', 'Informe o nome da receita.'); return; }
-    if (isNaN(valorNum) || valorNum <= 0) { Alert.alert('Erro', 'Informe um valor válido.'); return; }
+    
+    if (!nome.trim()) { 
+      toast.aviso('Informe o nome da receita.'); 
+      return; 
+    }
+    if (isNaN(valorNum) || valorNum <= 0) { 
+      toast.aviso('Informe um valor válido.'); 
+      return; 
+    }
 
     setLoading(true);
     try {
       if (fixo) {
-        // Criar fonte de receita fixa
+        // ✅ Corrigido: Adicionado 'criado_em' para satisfazer o tipo obrigatório
         await criarReceita({
           grupo_id: grupoId,
           criado_por: usuario.id,
@@ -74,9 +83,9 @@ export default function NovaReceitaScreen({ navigation }: any) {
           categoria,
           fixo: true,
           ativo: true,
+          criado_em: new Date().toISOString(), // Campo que estava faltando
         });
       } else {
-        // Criar transação avulsa do tipo renda
         await criarTransacao({
           grupo_id: grupoId,
           criado_por: usuario.id,
@@ -90,13 +99,19 @@ export default function NovaReceitaScreen({ navigation }: any) {
           parcelado: false,
         });
       }
+
+      // ✅ Invalida caches para atualizar as listas
+      invalidarPorPrefixo(CACHE_KEYS.receitasPrefixo(grupoId));
+      invalidarPorPrefixo(CACHE_KEYS.transacoesPrefixo(grupoId));
+
+      toast.ok('Receita salva com sucesso!');
       navigation.goBack();
     } catch (err: any) {
-      Alert.alert('Erro', err.message || 'Não foi possível salvar.');
+      toast.erro(err.message || 'Não foi possível salvar.');
     } finally {
       setLoading(false);
     }
-  }, [nome, valor, categoria, fixo, grupoId, usuario, nomeUsuario, navigation]);
+  }, [nome, valor, categoria, fixo, grupoId, usuario, nomeUsuario, navigation, invalidarPorPrefixo]);
 
   return (
     <View style={[s.container, { paddingTop: insets.top }]}>
@@ -108,7 +123,6 @@ export default function NovaReceitaScreen({ navigation }: any) {
       </View>
 
       <ScrollView contentContainerStyle={s.scroll} keyboardShouldPersistTaps="handled">
-        {/* Valor */}
         <Text style={s.label}>Valor (R$)</Text>
         <TextInput
           style={[s.input, s.valorInput, focusField === 'valor' && s.inputFocused]}
@@ -121,7 +135,6 @@ export default function NovaReceitaScreen({ navigation }: any) {
           onBlur={() => setFocusField('')}
         />
 
-        {/* Nome */}
         <Text style={s.label}>Nome</Text>
         <TextInput
           style={[s.input, focusField === 'nome' && s.inputFocused]}
@@ -133,7 +146,6 @@ export default function NovaReceitaScreen({ navigation }: any) {
           onBlur={() => setFocusField('')}
         />
 
-        {/* Categoria */}
         <Text style={s.label}>Categoria</Text>
         <View style={s.categoriaGrid}>
           {CATEGORIAS_RECEITA.map((cat) => (
@@ -151,7 +163,6 @@ export default function NovaReceitaScreen({ navigation }: any) {
           ))}
         </View>
 
-        {/* Fixo toggle */}
         <View style={[s.row, { marginTop: Spacing.lg }]}>
           <Text style={s.rowLabel}>Receita fixa</Text>
           <Switch
@@ -167,7 +178,6 @@ export default function NovaReceitaScreen({ navigation }: any) {
             : 'Será lançada como receita avulsa deste mês.'}
         </Text>
 
-        {/* Submit */}
         <TouchableOpacity
           style={[s.submitBtn, loading && s.submitBtnDisabled]}
           onPress={handleSalvar}
