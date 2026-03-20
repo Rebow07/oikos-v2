@@ -2,7 +2,7 @@
   "expo": {
     "name": "Oikos Family",
     "slug": "oikos-family",
-    "version": "2.7.0",
+    "version": "2.7.5",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": false,
