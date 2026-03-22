@@ -203,7 +203,7 @@ export default function DespesasScreen({ navigation }: any) {
       {/* ✅ Direcionamento correto para Nova Transação */}
       <TouchableOpacity 
         style={s.fab} 
-        onPress={() => navigation.navigate('NovaTransacao')} 
+        onPress={() => navigation.navigate('NovaDespesa')}
         activeOpacity={0.8}
       >
         <Plus size={26} color="#FFF" />

@@ -39,6 +39,30 @@ export async function gerarRecorrentes(grupoId: string): Promise<number> {
   const { data, error } = await supabase.rpc('gerar_recorrentes', {
     p_grupo_id: grupoId,
   });
+
+  if (error) throw error;
+  return (data as number) || 0;
+}
+
+export async function gerarRecorrentesAgora(grupoId: string): Promise<number> {
+  const { data, error } = await supabase.rpc('gerar_recorrentes_agora', {
+    p_grupo_id: grupoId,
+  });
+
+  if (error) throw error;
+  return (data as number) || 0;
+}
+export async function gerarRecorrentesMes(
+  grupoId: string,
+  mes: number,
+  ano: number
+): Promise<number> {
+  const { data, error } = await supabase.rpc('gerar_recorrentes_mes', {
+    p_grupo_id: grupoId,
+    p_mes: mes,
+    p_ano: ano,
+  });
+
   if (error) throw error;
   return (data as number) || 0;
 }

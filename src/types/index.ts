@@ -105,6 +105,8 @@ export interface Recorrente {
   ativo: boolean;
   ultima_geracao: string | null;
   criado_em: string;
+  data_inicio: string | null;
+  periodicidade?: 'mensal' | 'trimestral' | 'semestral' | 'anual';
 }
 
 export interface Meta {
@@ -258,5 +260,5 @@ export interface Recorrente {
   ativo: boolean;
   ultima_geracao: string | null;
   criado_em: string;
-  periodicidade?: 'mensal' | 'trimestral' | 'semestral' | 'anual'; // NOVO
+  periodicidade?: 'mensal' | 'trimestral' | 'semestral' | 'anual'; 
 }

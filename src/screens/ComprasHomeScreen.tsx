@@ -181,14 +181,11 @@ export default function ComprasHomeScreen({ navigation }: any) {
             
             toast.ok('Lista concluída!');
             
-            // REDIRECIONAMENTO PARA DESPESAS
-            // Ajuste o nome 'NovaTransacao' para o nome exato da sua rota de despesas
-            navigation.navigate('NovaTransacao', {
-              valorPreenchido: totalCompra.toFixed(2).replace('.', ','),
-              tituloPreenchido: `Compras: ${listaSel?.nome}`,
-              categoriaPreenchida: 'mercado'
-            });
-
+          navigation.navigate('NovaDespesa', {
+            valorPreenchido: totalCompra.toFixed(2).replace('.', ','),
+            tituloPreenchido: `Compras: ${listaSel?.nome}`,
+            categoriaPreenchida: 'mercado'
+          });
             setListaSel(null);
             carregarListas();
           } catch (err: any) { toast.erro(err.message); }

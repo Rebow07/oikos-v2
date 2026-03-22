@@ -44,7 +44,13 @@ export type RootStackParamList = {
   AgendaHome: undefined;
   BancoDetalhe: { contaId: string; contaNome: string };
   ComprasHome: undefined;
-  NovaDespesa: undefined;
+  NovaDespesa:
+    | {
+        valorPreenchido?: string;
+        tituloPreenchido?: string;
+        categoriaPreenchida?: string;
+      }
+    | undefined;
   NovaReceita: undefined;
   DetalheTransacao: { transacaoId: string };
   Metas: undefined;
