@@ -3,7 +3,7 @@ import {
   View, Text, FlatList, TouchableOpacity, StyleSheet, RefreshControl, Alert, TextInput, Modal, ScrollView, ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Plus, X, CreditCard, Trash2, Pencil } from 'lucide-react-native';
+import { Plus, X, CreditCard, Trash2, Pencil, FileText } from 'lucide-react-native';
 import { useTheme, AppColors, Spacing, FontSize, FontWeight, Radius } from '../theme';
 import { useApp } from '../context/AppContext';
 import { useCartoes } from '../hooks/useCartoes';
@@ -58,7 +58,7 @@ function makeStyles(C: AppColors) {
 
 interface CardWithGasto extends Cartao { gastoMes: number; }
 
-export default function CartoesScreen() {
+export default function CartoesScreen({ navigation }: any) {
   const { Colors } = useTheme();
   const s = useMemo(() => makeStyles(Colors), [Colors]);
   const insets = useSafeAreaInsets();
@@ -196,12 +196,13 @@ export default function CartoesScreen() {
         <Text style={s.barLabel}>{Math.round(pct)}% do limite comprometido</Text>
         <Text style={s.vencText}>Vencimento: dia {item.vencimento}</Text>
         <View style={s.actionsRow}>
-          <TouchableOpacity onPress={() => handleEditar(item)}><Pencil size={18} color="#FFF" /></TouchableOpacity>
-          <TouchableOpacity onPress={() => handleExcluir(item)}><Trash2 size={18} color="rgba(255,255,255,0.6)" /></TouchableOpacity>
+          <TouchableOpacity onPress={() => navigation.navigate('FaturaCartao', { cartaoId: item.id })} hitSlop={10}><FileText size={18} color="#FFF" /></TouchableOpacity>
+          <TouchableOpacity onPress={() => handleEditar(item)} hitSlop={10}><Pencil size={18} color="#FFF" /></TouchableOpacity>
+          <TouchableOpacity onPress={() => handleExcluir(item)} hitSlop={10}><Trash2 size={18} color="rgba(255,255,255,0.6)" /></TouchableOpacity>
         </View>
       </View>
     );
-  }, [s, handleExcluir]);
+  }, [s, handleExcluir, navigation]);
 
   return (
     <View style={[s.container, { paddingTop: insets.top }]}>

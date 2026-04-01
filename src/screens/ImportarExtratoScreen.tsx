@@ -9,14 +9,12 @@ import * as FileSystem from 'expo-file-system';
 import { useTheme, AppColors, Spacing, FontSize, FontWeight, Radius } from '../theme';
 import { useApp } from '../context/AppContext';
 import { criarTransacoesBatch } from '../services/transacoes.service';
-import { categorizarCSV } from '../services/ia.service';
+import { analisarLoteCSV, TransacaoImportada } from '../services/ai.service';
 import { formatarMoeda, dataHoje } from '../utils';
+import { toast } from '../utils/toast';
 import CategoriaIcon from '../components/CategoriaIcon';
 
-interface ParsedItem {
-  titulo: string;
-  valor: number;
-  categoria: string;
+export interface ParsedItem extends TransacaoImportada {
   selecionado: boolean;
 }
 
@@ -57,7 +55,7 @@ export default function ImportarExtratoScreen({ navigation }: any) {
 
   const handlePick = useCallback(async () => {
     try {
-      const result = await DocumentPicker.getDocumentAsync({ type: ['text/csv', 'text/comma-separated-values', 'application/csv'] });
+      const result = await DocumentPicker.getDocumentAsync({ type: ['text/csv', 'text/comma-separated-values', 'application/csv', '*/*'] });
       if (result.canceled) return;
 
       setLoading(true);
@@ -67,10 +65,14 @@ export default function ImportarExtratoScreen({ navigation }: any) {
 
       if (lines.length < 2) { Alert.alert('Erro', 'Arquivo vazio ou inválido.'); setLoading(false); return; }
 
-      // Remove header
-      const dataLines = lines.slice(1).slice(0, 50); // max 50 linhas
+      const previewRaw = lines.slice(0, 100).join('\n'); // send up to 100 lines for AI to figure out which is header and parse it
+      const categorized = await analisarLoteCSV(previewRaw);
+      
+      if (!categorized || categorized.length === 0) {
+         Alert.alert('Erro', 'A IA não conseguiu encontrar transações válidas.');
+         return;
+      }
 
-      const categorized = await categorizarCSV(dataLines);
       setItems(categorized.map((c) => ({ ...c, selecionado: true })));
       setStep('review');
     } catch (err: any) {
@@ -97,8 +99,8 @@ export default function ImportarExtratoScreen({ navigation }: any) {
         titulo: item.titulo,
         valor: item.valor,
         categoria: item.categoria,
-        tipo: 'despesa' as const,
-        data: dataHoje(),
+        tipo: item.tipo || 'despesa',
+        data: item.data || dataHoje(),
         fixo: false,
         parcelado: false,
       }));
@@ -145,9 +147,11 @@ export default function ImportarExtratoScreen({ navigation }: any) {
               {item.selecionado ? <CheckSquare size={20} color={Colors.renda} /> : <Square size={20} color={Colors.textMuted} />}
               <View style={s.itemInfo}>
                 <Text style={s.itemTitle}>{item.titulo}</Text>
-                <Text style={s.itemCat}>{item.categoria}</Text>
+                <Text style={s.itemCat}>{item.categoria} ({item.data})</Text>
               </View>
-              <Text style={s.itemValor}>{formatarMoeda(item.valor)}</Text>
+              <Text style={[s.itemValor, { color: item.tipo === 'renda' ? Colors.renda : Colors.despesa }]}>
+                {item.tipo === 'renda' ? '+ ' : '- '}{formatarMoeda(item.valor)}
+              </Text>
             </TouchableOpacity>
           )}
           ListFooterComponent={

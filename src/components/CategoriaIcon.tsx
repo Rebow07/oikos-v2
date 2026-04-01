@@ -7,6 +7,7 @@ interface Props {
   categoria: string;
   size?: number;
   tipo?: 'despesa' | 'renda';
+  corCustom?: string;
 }
 
 const ICON_MAP: Record<string, any> = {
@@ -37,13 +38,14 @@ const ICON_MAP: Record<string, any> = {
   Plus: Icons.Plus,
 };
 
-function CategoriaIcon({ categoria, size = 36, tipo = 'despesa' }: Props) {
+function CategoriaIcon({ categoria, size = 36, tipo = 'despesa', corCustom }: Props) {
   const lista = tipo === 'renda' ? CATEGORIAS_RECEITA : CATEGORIAS;
   const cat = lista.find((c) => c.id === categoria);
 
-  const iconName = cat?.icon || 'MoreHorizontal';
-  const cor = cat?.cor || '#95A5A6';
-  const IconComponent = ICON_MAP[iconName] || Icons.MoreHorizontal;
+  const iconName = cat?.icon || 'Tag';
+  const cor = corCustom || cat?.cor || '#95A5A6';
+  // Include Tag in icon map dynamically if not there
+  const IconComponent = ICON_MAP[iconName] || Icons.Tag || Icons.MoreHorizontal;
 
   const iconSize = size * 0.5;
 

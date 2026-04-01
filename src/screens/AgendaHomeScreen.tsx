@@ -3,12 +3,64 @@ import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet, TextInput, Alert, Modal, Switch, ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ArrowLeft, Plus, X, Trash2, Clock, MapPin, ChevronLeft, ChevronRight, Calendar, CheckSquare, Square } from 'lucide-react-native';
+import { ArrowLeft, Plus, X, Clock, MapPin, ChevronLeft, ChevronRight, Calendar, CheckSquare, Square } from 'lucide-react-native';
+import * as ExpoCalendar from 'expo-calendar';
 import { useTheme, AppColors, Spacing, FontSize, FontWeight, Radius } from '../theme';
 import { useApp } from '../context/AppContext';
 import { supabase } from '../services/supabase';
 import { MESES } from '../constants';
 import type { Compromisso, Nota } from '../types';
+
+// ── Helpers de integração com o calendário nativo ──────────────────────────
+async function obterCalendarioPadrao(): Promise<string | null> {
+  try {
+    const { status } = await ExpoCalendar.requestCalendarPermissionsAsync();
+    if (status !== 'granted') return null;
+    const cals = await ExpoCalendar.getCalendarsAsync(ExpoCalendar.EntityTypes.EVENT);
+    const principal = cals.find((c) => c.isPrimary && c.allowsModifications)
+      || cals.find((c) => c.allowsModifications)
+      || cals[0];
+    return principal?.id ?? null;
+  } catch {
+    return null;
+  }
+}
+
+async function criarEventoCalendario(
+  calId: string,
+  titulo: string,
+  dataInicio: Date,
+  diaInteiro: boolean,
+  local?: string | null,
+  descricao?: string | null,
+  lembrete?: number,
+): Promise<string | null> {
+  try {
+    const dataFim = diaInteiro
+      ? dataInicio
+      : new Date(dataInicio.getTime() + 60 * 60 * 1000);
+    const eventId = await ExpoCalendar.createEventAsync(calId, {
+      title: titulo,
+      startDate: dataInicio,
+      endDate: dataFim,
+      allDay: diaInteiro,
+      location: local || undefined,
+      notes: descricao || undefined,
+      alarms: lembrete ? [{ relativeOffset: -lembrete }] : [],
+    });
+    return eventId;
+  } catch {
+    return null;
+  }
+}
+
+async function excluirEventoCalendario(eventId: string): Promise<void> {
+  try {
+    await ExpoCalendar.deleteEventAsync(eventId);
+  } catch {
+    // ignora — evento pode já não existir
+  }
+}
 
 const CORES_EVENTO = ['#2980B9', '#E74C3C', '#27AE60', '#8E44AD', '#E67E22', '#1ABC9C', '#c9a227'];
 
@@ -160,14 +212,40 @@ export default function AgendaHomeScreen({ navigation }: any) {
 
   const handleCriar = useCallback(async () => {
     if (!titulo.trim()) { Alert.alert('Erro', 'Título obrigatório.'); return; }
-    const dataInicio = `${anoVis}-${String(mesVis + 1).padStart(2, '0')}-${String(diaSel).padStart(2, '0')}T${hora.padStart(2, '0')}:${minuto.padStart(2, '0')}:00`;
+    const dataInicioStr = `${anoVis}-${String(mesVis + 1).padStart(2, '0')}-${String(diaSel).padStart(2, '0')}T${hora.padStart(2, '0')}:${minuto.padStart(2, '0')}:00`;
+    const dataInicioDate = new Date(dataInicioStr);
     setSaving(true);
     try {
-      await supabase.from('compromissos').insert({
-        grupo_id: grupoId, criado_por: usuario.id, titulo: titulo.trim(),
-        descricao: descricao.trim() || null, data_inicio: dataInicio, dia_inteiro: diaInteiro,
-        local: local.trim() || null, cor, lembrete_minutos: 30,
-      });
+      // 1. Salvar no Supabase primeiro
+      const { data: novoComp, error } = await supabase
+        .from('compromissos')
+        .insert({
+          grupo_id: grupoId, criado_por: usuario.id, titulo: titulo.trim(),
+          descricao: descricao.trim() || null, data_inicio: dataInicioStr, dia_inteiro: diaInteiro,
+          local: local.trim() || null, cor, lembrete_minutos: 30,
+        })
+        .select()
+        .single();
+      if (error) throw error;
+
+      // 2. Tentar sincronizar com o calendário nativo
+      const calId = await obterCalendarioPadrao();
+      if (calId && novoComp) {
+        const eventId = await criarEventoCalendario(
+          calId,
+          titulo.trim(),
+          dataInicioDate,
+          diaInteiro,
+          local.trim() || null,
+          descricao.trim() || null,
+          30,
+        );
+        if (eventId) {
+          // Salvar o ID do evento no banco para poder excluir depois
+          await supabase.from('compromissos').update({ google_event_id: eventId }).eq('id', novoComp.id);
+        }
+      }
+
       setShowModal(false); setTitulo(''); setDescricao(''); setLocal(''); carregar();
     } catch (err: any) { Alert.alert('Erro', err.message); } finally { setSaving(false); }
   }, [titulo, descricao, hora, minuto, local, diaInteiro, cor, anoVis, mesVis, diaSel, grupoId, usuario, carregar]);
@@ -175,7 +253,16 @@ export default function AgendaHomeScreen({ navigation }: any) {
   const handleExcluir = (c: Compromisso) => {
     Alert.alert('Excluir', `Remover "${c.titulo}"?`, [
       { text: 'Cancelar' },
-      { text: 'Excluir', style: 'destructive', onPress: async () => { await supabase.from('compromissos').delete().eq('id', c.id); carregar(); } },
+      {
+        text: 'Excluir', style: 'destructive', onPress: async () => {
+          // Remover do calendário nativo se existir vínculo
+          if (c.google_event_id) {
+            await excluirEventoCalendario(c.google_event_id);
+          }
+          await supabase.from('compromissos').delete().eq('id', c.id);
+          carregar();
+        },
+      },
     ]);
   };
 
@@ -229,6 +316,7 @@ export default function AgendaHomeScreen({ navigation }: any) {
       <View style={s.headerBar}>
         <TouchableOpacity onPress={() => navigation.goBack()}><ArrowLeft size={24} color={Colors.textPrimary} /></TouchableOpacity>
         <Text style={s.headerTitle}>Agenda</Text>
+        <Calendar size={18} color={Colors.textMuted} />
       </View>
 
       <ScrollView contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
@@ -251,7 +339,15 @@ export default function AgendaHomeScreen({ navigation }: any) {
           return (
             <TouchableOpacity key={c.id} style={[s.eventCard, { borderLeftColor: c.cor || Colors.primary }]}
               onLongPress={() => handleExcluir(c)}>
-              <Text style={s.eventTitle}>{c.titulo}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                <Text style={s.eventTitle}>{c.titulo}</Text>
+                {c.google_event_id && (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                    <Calendar size={12} color={Colors.primary} />
+                    <Text style={{ fontSize: 10, color: Colors.primary, fontWeight: '700' }}>Cal</Text>
+                  </View>
+                )}
+              </View>
               <View style={{ flexDirection: 'row', gap: Spacing.md, marginTop: 4 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                   <Clock size={12} color={Colors.textMuted} /><Text style={s.eventMetaText}>{horario}</Text>

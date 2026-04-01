@@ -6,6 +6,7 @@ import Toast from 'react-native-toast-message';
 import { ThemeProvider, useThemeContext } from './src/context/ThemeContext';
 import { AppProvider } from './src/context/AppContext';
 import { CacheInvalidationProvider } from './src/context/CacheContext';
+import { SyncProvider } from './src/database/sync/SyncContext';
 import Navigation from './src/navigation';
 
 // ─── Error Boundary ──────────────────────────────────────────────────────────
@@ -67,7 +68,9 @@ export default function App() {
             */}
             <CacheInvalidationProvider>
               <AppProvider>
-                <Navigation />
+                <SyncProvider>
+                  <Navigation />
+                </SyncProvider>
               </AppProvider>
             </CacheInvalidationProvider>
 

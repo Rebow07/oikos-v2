@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  View, Text, TouchableOpacity, ScrollView, StyleSheet, Alert, ActivityIndicator, Modal,
+  View, Text, TouchableOpacity, ScrollView, StyleSheet, Alert, ActivityIndicator, Modal, Image, Linking
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -37,6 +37,9 @@ function makeStyles(C: AppColors) {
     actionBtnExcluir: { backgroundColor: C.despesa + '15' },
     actionBtnAdiantar: { backgroundColor: C.primary + '15' },
     actionBtnText: { fontSize: FontSize.md, fontWeight: FontWeight.bold },
+    // Comprovante
+    comprovanteSection: { backgroundColor: C.surface, borderRadius: Radius.md, padding: Spacing.md, marginTop: Spacing.lg, borderWidth: StyleSheet.hairlineWidth, borderColor: C.border },
+    comprovanteImg: { width: '100%', height: 160, borderRadius: Radius.sm, marginTop: Spacing.sm },
     // Parcelas info
     parcelasSection: { backgroundColor: C.surface, borderRadius: Radius.md, padding: Spacing.md, marginTop: Spacing.lg, borderWidth: StyleSheet.hairlineWidth, borderColor: C.border },
     parcelasSectionTitle: { fontSize: FontSize.md, fontWeight: FontWeight.bold, color: C.textPrimary, marginBottom: Spacing.sm },
@@ -266,6 +269,16 @@ export default function DetalheTransacaoScreen({ route, navigation }: any) {
             </View>
           )}
         </View>
+
+        {/* ── Comprovante ── */}
+        {transacao.comprovante_url && (
+          <View style={s.comprovanteSection}>
+            <Text style={s.detailLabel}>Comprovante Anexado</Text>
+            <TouchableOpacity onPress={() => Linking.openURL(transacao.comprovante_url!)} activeOpacity={0.8}>
+              <Image source={{ uri: transacao.comprovante_url }} style={s.comprovanteImg} resizeMode="cover" />
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* Seção de parcelas */}
         {isParcelado && (

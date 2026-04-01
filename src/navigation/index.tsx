@@ -33,6 +33,10 @@ import BancoDetalheScreen from '../screens/BancoDetalheScreen';
 import ComprasHomeScreen from '../screens/ComprasHomeScreen';
 import TarefasHomeScreen from '../screens/TarefasHomeScreen';
 import AgendaHomeScreen from '../screens/AgendaHomeScreen';
+import BuscaGlobalScreen from '../screens/BuscaGlobalScreen';
+import CategoriasCustomScreen from '../screens/CategoriasCustomScreen';
+import SplitDespesaScreen from '../screens/SplitDespesaScreen';
+import FaturaCartaoScreen from '../screens/FaturaCartaoScreen';
 
 export type RootStackParamList = {
   Splash: undefined;
@@ -59,7 +63,11 @@ export type RootStackParamList = {
   Relatorios: undefined;
   ImportarExtrato: undefined;
   MultiploGrupos: undefined;
+  BuscaGlobal: undefined;
+  CategoriasCustom: undefined;
+  SplitDespesa: undefined;
   RelatorioEmail: undefined;
+  FaturaCartao: { cartaoId: string };
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -126,6 +134,10 @@ export default function Navigation() {
           <Stack.Screen name="ImportarExtrato" component={ImportarExtratoScreen} />
           <Stack.Screen name="MultiploGrupos" component={MultiploGruposScreen} />
           <Stack.Screen name="RelatorioEmail" component={RelatorioEmailScreen} />
+          <Stack.Screen name="BuscaGlobal" component={BuscaGlobalScreen} />
+          <Stack.Screen name="CategoriasCustom" component={CategoriasCustomScreen} />
+          <Stack.Screen name="SplitDespesa" component={SplitDespesaScreen} />
+          <Stack.Screen name="FaturaCartao" component={FaturaCartaoScreen} />
         </Stack.Group>
       </Stack.Navigator>
     </NavigationContainer>

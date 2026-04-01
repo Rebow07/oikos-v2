@@ -32,6 +32,7 @@ export function useDataWithCache<T>(
   const [erro, setErro]         = useState<string | null>(null);
   const mountedRef              = useRef(true);
   const fetchingRef             = useRef(false);
+  const dataRef                 = useRef<T | null>(null);
   
   // Guarda a versão que triggou o último fetch para comparar
   const lastVersionRef          = useRef(-1);
@@ -62,13 +63,14 @@ export function useDataWithCache<T>(
       const resultado = await fetcher();
       if (mountedRef.current) {
         setData(resultado);
+        dataRef.current = resultado;
         setCarregando(false);
         if (cacheKey) setCache(cacheKey, resultado);
       }
     } catch (err: any) {
       if (mountedRef.current) {
-        // Só exibe erro se não havia cache para mostrar
-        if (data === null) {
+        // Só exibe erro se não havia cache para mostrar (usa ref para evitar stale closure)
+        if (dataRef.current === null) {
           setErro(err.message || 'Erro ao carregar dados');
         }
         setCarregando(false);

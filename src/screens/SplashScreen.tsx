@@ -11,7 +11,6 @@ export default function SplashScreen({ navigation }: any) {
   const subColor = isDark ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.4)';
 
   const fadeIn = useRef(new Animated.Value(0)).current;
-  const blurAnim = useRef(new Animated.Value(20)).current;
   const scaleAnim = useRef(new Animated.Value(0.8)).current;
   const subtitleFade = useRef(new Animated.Value(0)).current;
   const subtitleSlide = useRef(new Animated.Value(20)).current;

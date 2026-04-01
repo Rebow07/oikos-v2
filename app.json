@@ -44,7 +44,8 @@
         }
       ],
       "expo-calendar",
-      "@react-native-google-signin/google-signin"
+      "@react-native-google-signin/google-signin",
+      "expo-sqlite"
     ],
     "extra": {
       "eas": {

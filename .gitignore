@@ -8,6 +8,17 @@ dist/
 *.mobileprovision
 *.orig.*
 web-build/
+.env
 .env.local
 .env.production
 
+# Gerados pelo expo prebuild — não versionar
+android/
+ios/
+
+# IDE / OS
+.vscode/
+.idea/
+*.log
+.DS_Store
+Thumbs.db

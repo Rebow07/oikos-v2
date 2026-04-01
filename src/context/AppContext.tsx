@@ -51,7 +51,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [orcamentoMensal, setOrcamentoMensalState] = useState(0);
   const [filtroTempo, setFiltroTempo]         = useState<FiltroTempo>('mensal');
 
-  // Controle para não gerar recorrentes várias vezes na mesma sessão
+  // Controle para não gerar recorrentes várias vezes para o mesmo grupo+mês
   const autoGenRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -110,6 +110,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [grupoId, usuario]);
 
   useEffect(() => { if (usuario) carregarGrupo(); }, [usuario, grupoId, carregarGrupo]);
+
+  // #9 — Gerar recorrentes automaticamente ao mudar de mês
+  useEffect(() => {
+    if (!grupoId || !usuario) return;
+    const chave = `${grupoId}-${anoSelecionado}-${mesSelecionado}`;
+    if (autoGenRef.current === chave) return;
+    autoGenRef.current = chave;
+    gerarRecorrentes(grupoId).catch(() => console.log('Geração automática pendente ou falhou.'));
+  }, [grupoId, usuario, mesSelecionado, anoSelecionado]);
 
   useEffect(() => {
     if (!usuario) return;

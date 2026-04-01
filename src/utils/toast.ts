@@ -22,9 +22,9 @@ export const toast = {
   ok: (mensagem: string, titulo = 'Pronto') =>
     Toast.show({ type: 'success', text1: titulo, text2: mensagem, visibilityTime: 3000, position: 'top' }),
 
-  /** Aviso — fundo laranja */
+  /** Aviso — fundo amarelo/laranja */
   aviso: (mensagem: string, titulo = 'Atenção') =>
-    Toast.show({ type: 'error', text1: titulo, text2: mensagem, visibilityTime: 3500, position: 'top' }),
+    Toast.show({ type: 'info', text1: titulo, text2: mensagem, visibilityTime: 3500, position: 'top' }),
 
   /** Info — fundo azul */
   info: (mensagem: string, titulo = 'Info') =>

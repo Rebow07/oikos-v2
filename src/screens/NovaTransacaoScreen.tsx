@@ -1,21 +1,25 @@
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet,
-  ActivityIndicator, Switch, Modal, Alert
+  ActivityIndicator, Switch, Modal, Alert, Image,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { X, CreditCard, ChevronDown } from 'lucide-react-native';
+import { X, CreditCard, ChevronDown, Camera, Trash2, Sparkles, AlertTriangle } from 'lucide-react-native';
+import * as ImagePicker from 'expo-image-picker';
 import * as Calendar from 'expo-calendar';
 import { useTheme, AppColors, Spacing, FontSize, FontWeight, Radius } from '../theme';
 import { useApp } from '../context/AppContext';
 import { useCacheInvalidation, CACHE_KEYS } from '../context/CacheContext';
 import { criarTransacao, criarTransacoesBatch } from '../services/transacoes.service';
+import { uploadComprovante } from '../services/storage.service';
+import { sugerirCategoriaTransacao } from '../services/ai.service';
 import { CATEGORIAS } from '../constants';
 import { dataHoje, gerarUUID, formatarMoeda } from '../utils';
 import { toast } from '../utils/toast';
 import CategoriaIcon from '../components/CategoriaIcon';
 import type { Cartao } from '../types';
 import { supabase } from '../services/supabase';
+import { getCategoriasCustom, CategoriaCustom } from './CategoriasCustomScreen';
 
 function makeStyles(C: AppColors) {
   return StyleSheet.create({
@@ -59,6 +63,18 @@ function makeStyles(C: AppColors) {
     parcelaEditLabel: { fontSize: FontSize.xs, color: C.textMuted },
     parcelaEditInput: { width: 100, textAlign: 'center', fontSize: FontSize.md, fontWeight: FontWeight.bold },
     parcelaTotalLabel: { fontSize: FontSize.xs, color: C.textMuted, marginTop: Spacing.xs, textAlign: 'center' },
+    // Comprovante
+    comprovanteBtn: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, backgroundColor: C.surface, borderRadius: Radius.sm, padding: Spacing.md, borderWidth: 1, borderColor: C.border, borderStyle: 'dashed' },
+    comprovanteText: { fontSize: FontSize.sm, color: C.textMuted, flex: 1 },
+    comprovanteImg: { width: '100%', height: 160, borderRadius: Radius.sm, marginTop: Spacing.sm },
+    comprovanteRemove: { position: 'absolute', top: Spacing.sm, right: Spacing.sm, backgroundColor: C.despesa + 'CC', borderRadius: 12, padding: 4 },
+    // IA
+    aiSection: { marginTop: Spacing.sm, alignItems: 'flex-start' },
+    aiBtn: { flexDirection: 'row', alignItems: 'center', gap: Spacing.xs, backgroundColor: C.primary + '15', paddingHorizontal: Spacing.md, paddingVertical: Spacing.xs, borderRadius: Radius.full, borderWidth: 1, borderColor: C.primary + '30' },
+    aiText: { fontSize: FontSize.sm, fontWeight: FontWeight.bold, color: C.primary },
+    // Aviso Meta
+    avisoMeta: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F39C1215', borderRadius: Radius.sm, padding: Spacing.md, marginTop: Spacing.md, gap: Spacing.sm },
+    avisoMetaText: { fontSize: FontSize.sm, color: '#F39C12', flex: 1, fontWeight: FontWeight.bold },
   });
 }
 
@@ -82,12 +98,110 @@ export default function NovaTransacaoScreen({ route, navigation }: any) {
   const [limiteDisponivel, setLimiteDisponivel] = useState<number | null>(null);
   const [showCartaoModal, setShowCartaoModal] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [loadingIA, setLoadingIA] = useState(false);
   const [syncAgenda, setSyncAgenda] = useState(true);
+  const [comprovanteUri, setComprovanteUri] = useState<string | null>(null);
+  const [categoriasLista, setCategoriasLista] = useState([...CATEGORIAS]);
+
+  useEffect(() => {
+    getCategoriasCustom().then((customs) => {
+      setCategoriasLista([...CATEGORIAS, ...customs]);
+    });
+  }, []);
+
+  const handleEscolherComprovante = useCallback(async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permissão', 'Permita acesso à galeria para anexar comprovante.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.7,
+      allowsEditing: true,
+    });
+    if (!result.canceled && result.assets[0]) {
+      setComprovanteUri(result.assets[0].uri);
+    }
+  }, []);
+
+  const handleTirarFoto = useCallback(async () => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permissão', 'Permita acesso à câmera para tirar foto do comprovante.');
+      return;
+    }
+    const result = await ImagePicker.launchCameraAsync({
+      quality: 0.7,
+      allowsEditing: true,
+    });
+    if (!result.canceled && result.assets[0]) {
+      setComprovanteUri(result.assets[0].uri);
+    }
+  }, []);
+
+  const handleSugerirIA = useCallback(async () => {
+    if (!titulo.trim()) return;
+    setLoadingIA(true);
+    try {
+      const respCat = await sugerirCategoriaTransacao(titulo.trim(), 'despesa');
+      setCategoria(respCat);
+      toast.ok(`A IA sugeriu: ${respCat}`);
+    } catch (error: any) {
+      toast.erro(error.message || 'Falha ao sugerir com IA.');
+    } finally {
+      setLoadingIA(false);
+    }
+  }, [titulo]);
 
   const hoje = dataHoje().split('-');
   const [diaInput, setDiaInput] = useState(hoje[2]);
   const [mesInput, setMesInput] = useState(hoje[1]);
   const [anoInput, setAnoInput] = useState(hoje[0]);
+  const [avisoMeta, setAvisoMeta] = useState<string | null>(null);
+
+  // ✅ Validar Orçamento (Meta) ao digitar valor/categoria
+  useEffect(() => {
+    const valorNum = parseFloat(valor.replace(',', '.')) || 0;
+    if (valorNum <= 0 || !categoria || !grupoId) {
+      setAvisoMeta(null);
+      return;
+    }
+    const checkMeta = async () => {
+      try {
+        const mesInt = parseInt(mesInput, 10);
+        const anoInt = parseInt(anoInput, 10);
+        const limitRes = await supabase.from('metas')
+          .select('valor_limite').eq('grupo_id', grupoId).eq('mes', mesInt).eq('ano', anoInt).eq('categoria', categoria).maybeSingle();
+        
+        if (!limitRes.data) {
+          setAvisoMeta(null);
+          return;
+        }
+
+        const mt = limitRes.data.valor_limite;
+        const ini = new Date(anoInt, mesInt - 1, 1).toISOString();
+        const f = new Date(anoInt, mesInt, 0).toISOString();
+        
+        const gasRes = await supabase.from('transacoes')
+          .select('valor').eq('grupo_id', grupoId).eq('categoria', categoria).eq('tipo', 'despesa').gte('data', ini).lte('data', f);
+          
+        const totalGasto = (gasRes.data || []).reduce((acc, t) => acc + Number(t.valor), 0);
+        
+        if (totalGasto + valorNum > mt) {
+          setAvisoMeta(`Esta despesa fará você ultrapassar seu limite de ${formatarMoeda(mt)} nesta categoria.`);
+        } else {
+          setAvisoMeta(null);
+        }
+      } catch (e) {
+        setAvisoMeta(null);
+      }
+    };
+    
+    // debounce de digitação
+    const t = setTimeout(checkMeta, 600);
+    return () => clearTimeout(t);
+  }, [valor, categoria, mesInput, anoInput, grupoId]);
 
   // ✅ Sincroniza parâmetros caso venham de outra tela (como Compras)
   useEffect(() => {
@@ -162,6 +276,11 @@ export default function NovaTransacaoScreen({ route, navigation }: any) {
 
     setLoading(true);
     try {
+      let finalComprovanteUrl: string | null = null;
+      if (comprovanteUri && grupoId) {
+        finalComprovanteUrl = await uploadComprovante(grupoId, comprovanteUri);
+      }
+
       if (parcelado) {
         const parcelaGrupoId = gerarUUID();
         const transacoes = [];
@@ -181,6 +300,7 @@ export default function NovaTransacaoScreen({ route, navigation }: any) {
             cartao_id: cartaoId, 
             parcela_grupo_id: parcelaGrupoId, 
             parcela_index: i,
+            comprovante_url: finalComprovanteUrl,
           });
           if (syncAgenda) await agendarNoCalendar(titulo, d, valorParcelaEfetivo);
         }
@@ -199,6 +319,7 @@ export default function NovaTransacaoScreen({ route, navigation }: any) {
           fixo, 
           parcelado: false, 
           cartao_id: cartaoId,
+          comprovante_url: finalComprovanteUrl,
         });
         if (syncAgenda) {
           const dFinal = new Date(parseInt(anoInput), parseInt(mesInput) - 1, parseInt(diaInput), 9, 0);
@@ -217,7 +338,7 @@ export default function NovaTransacaoScreen({ route, navigation }: any) {
   }, [titulo, valorNum, categoria, anoInput, mesInput, diaInput, fixo, parcelado,
       numParcelasNum, valorParcelaEfetivo, totalComJuros, cartaoId, limiteDisponivel,
       syncAgenda, grupoId, usuario, nomeUsuario, navigation, cartaoSelecionado,
-      invalidarPorPrefixo]);
+      comprovanteUri, invalidarPorPrefixo]);
 
   return (
     <View style={[s.container, { paddingTop: insets.top }]}>
@@ -232,16 +353,54 @@ export default function NovaTransacaoScreen({ route, navigation }: any) {
 
         <Text style={s.label}>Descrição</Text>
         <TextInput style={s.input} placeholder="Ex: Mercado, Aluguel..." placeholderTextColor={Colors.textMuted} value={titulo} onChangeText={setTitulo} />
+        
+        {titulo.trim().length > 3 && (
+          <View style={s.aiSection}>
+            <TouchableOpacity style={s.aiBtn} onPress={handleSugerirIA} disabled={loadingIA}>
+              {loadingIA ? <ActivityIndicator size="small" color={Colors.primary} /> : <Sparkles size={16} color={Colors.primary} />}
+              <Text style={s.aiText}>{loadingIA ? 'Analisando...' : 'IA: Sugerir categoria'}</Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         <Text style={s.label}>Categoria</Text>
         <View style={s.categoriaGrid}>
-          {CATEGORIAS.map((cat) => (
+          {categoriasLista.map((cat) => (
             <TouchableOpacity key={cat.id} style={[s.categoriaItem, categoria === cat.id && s.categoriaItemSelected]} onPress={() => setCategoria(cat.id)}>
-              <CategoriaIcon categoria={cat.id} size={32} />
+              <CategoriaIcon categoria={cat.id} corCustom={(cat as any).cor} size={32} />
               <Text style={[s.categoriaLabel, categoria === cat.id && s.categoriaLabelSelected]}>{cat.label}</Text>
             </TouchableOpacity>
           ))}
         </View>
+
+        {avisoMeta && (
+          <View style={s.avisoMeta}>
+            <AlertTriangle size={20} color="#F39C12" />
+            <Text style={s.avisoMetaText}>{avisoMeta}</Text>
+          </View>
+        )}
+
+        {/* Comprovante (foto) */}
+        <Text style={s.label}>Comprovante (opcional)</Text>
+        {comprovanteUri ? (
+          <View>
+            <Image source={{ uri: comprovanteUri }} style={s.comprovanteImg} resizeMode="cover" />
+            <TouchableOpacity style={s.comprovanteRemove} onPress={() => setComprovanteUri(null)}>
+              <Trash2 size={14} color="#FFF" />
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <View style={{ flexDirection: 'row', gap: Spacing.sm }}>
+            <TouchableOpacity style={[s.comprovanteBtn, { flex: 1 }]} onPress={handleEscolherComprovante}>
+              <Camera size={18} color={Colors.textMuted} />
+              <Text style={s.comprovanteText}>Galeria</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[s.comprovanteBtn, { flex: 1 }]} onPress={handleTirarFoto}>
+              <Camera size={18} color={Colors.primary} />
+              <Text style={[s.comprovanteText, { color: Colors.primary }]}>Câmera</Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         <Text style={s.label}>Data da Compra</Text>
         <View style={{ flexDirection: 'row', gap: Spacing.sm }}>

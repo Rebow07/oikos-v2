@@ -1,9 +1,9 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, RefreshControl } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   ArrowDownCircle, ArrowUpCircle, TrendingUp, ChevronRight, ArrowLeft,
-  CheckCircle2, Clock, Target, PiggyBank, BarChart3, Users, Scale, ShoppingCart,
+  CheckCircle2, Clock, Target, PiggyBank, BarChart3, Users, Scale, ShoppingCart, Search,
 } from 'lucide-react-native';
 import { useTheme, AppColors, Spacing, FontSize, FontWeight, Radius } from '../theme';
 import { useApp } from '../context/AppContext';
@@ -65,7 +65,7 @@ function makeStyles(C: AppColors) {
 
 export default function DashboardScreen({ navigation }: any) {
   const { Colors } = useTheme();
-  const s = makeStyles(Colors);
+  const s = useMemo(() => makeStyles(Colors), [Colors]);
   const insets = useSafeAreaInsets();
   const { nomeUsuario, mesSelecionado, anoSelecionado, orcamentoMensal, getNomeMembro, qtdMembros } = useApp();
   const { transacoes, carregando, recarregar, totalDespesas, totalReceitas, saldo, totalPago, totalAPagar, porCategoria } = useTransacoes();
@@ -99,6 +99,9 @@ export default function DashboardScreen({ navigation }: any) {
           <Users size={12} color={Colors.primary} />
           <Text style={s.membrosText}>{qtdMembros}</Text>
         </View>
+        <TouchableOpacity onPress={() => navigation.navigate('BuscaGlobal')} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+          <Search size={22} color={Colors.textPrimary} />
+        </TouchableOpacity>
       </View>
 
       <ScrollView contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}

@@ -127,16 +127,37 @@ export const CACHE_KEYS = {
   recorrentes:          (grupoId: string) => `recorrentes_${grupoId}`,
   transacoes:           (grupoId: string, mes: number, ano: number, tipo = 'all') =>
                           `trans_${grupoId}_${mes}_${ano}_${tipo}`,
+  // Novas chaves
+  compras:              (grupoId: string) => `compras_${grupoId}`,
+  itensCompra:          (listaId: string) => `itens_compra_${listaId}`,
+  notas:                (grupoId: string) => `notas_${grupoId}`,
+  metas:                (grupoId: string, mes: number, ano: number) => `metas_${grupoId}_${mes}_${ano}`,
+  reservas:             (grupoId: string) => `reservas_${grupoId}`,
+  contas:               (grupoId: string) => `contas_${grupoId}`,
+  compromissos:         (grupoId: string) => `compromissos_${grupoId}`,
   // Prefixos — para invalidar todas as variações de um grupo
   transacoesPrefixo:    (grupoId: string) => `trans_${grupoId}_`,
   cartoesPrefixo:       (grupoId: string) => `cartoes_${grupoId}`,
   receitasPrefixo:      (grupoId: string) => `receitas_${grupoId}`,
   recorrentesPrefixo:   (grupoId: string) => `recorrentes_${grupoId}`,
+  comprasPrefixo:       (grupoId: string) => `compras_${grupoId}`,
+  notasPrefixo:         (grupoId: string) => `notas_${grupoId}`,
+  metasPrefixo:         (grupoId: string) => `metas_${grupoId}_`,
+  reservasPrefixo:      (grupoId: string) => `reservas_${grupoId}`,
+  contasPrefixo:        (grupoId: string) => `contas_${grupoId}`,
+  compromissosPrefixo:  (grupoId: string) => `compromissos_${grupoId}`,
   // Invalida tudo de um grupo de uma vez
   tudoDoGrupo:          (grupoId: string) => [
     `trans_${grupoId}_`,
     `cartoes_${grupoId}`,
     `receitas_${grupoId}`,
     `recorrentes_${grupoId}`,
+    `compras_${grupoId}`,
+    `notas_${grupoId}`,
+    `metas_${grupoId}_`,
+    `reservas_${grupoId}`,
+    `contas_${grupoId}`,
+    `compromissos_${grupoId}`,
   ],
 } as const;
+

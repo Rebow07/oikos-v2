@@ -54,15 +54,13 @@ export function fimDoMes(mes: number, ano: number): string {
   return `${ano}-${String(mes).padStart(2, '0')}-${ultimoDia}`;
 }
 
+import { AVATAR_COLORS } from '../constants';
+
 /**
  * Gera cor de avatar baseada no índice do membro
  */
 export function corAvatar(index: number): string {
-  const cores = [
-    '#c9a227', '#2980B9', '#E74C3C', '#27AE60',
-    '#8E44AD', '#E67E22', '#1ABC9C', '#D35400',
-  ];
-  return cores[index % cores.length];
+  return AVATAR_COLORS[index % AVATAR_COLORS.length];
 }
 
 /**
@@ -107,3 +105,14 @@ export function truncar(texto: string, max: number): string {
   if (texto.length <= max) return texto;
   return texto.slice(0, max - 1) + '…';
 }
+
+/**
+ * Formata valor abreviado para gráficos: 1200 → "1,2k" / 1500000 → "1,5M"
+ */
+export function formatarMoedaAbrev(valor: number): string {
+  if (valor === 0) return '—';
+  if (valor >= 1_000_000) return `${(valor / 1_000_000).toFixed(1).replace('.', ',')}M`;
+  if (valor >= 1_000) return `${(valor / 1_000).toFixed(1).replace('.', ',')}k`;
+  return `${valor.toFixed(0)}`;
+}
+

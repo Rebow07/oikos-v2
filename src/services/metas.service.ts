@@ -13,7 +13,7 @@ export async function buscarMetas(grupoId: string, mes: number, ano: number): Pr
   return (data as Meta[]) || [];
 }
 
-export async function salvarMeta(meta: Omit<Meta, 'id'> & { id?: string }): Promise<void> {
+export async function salvarMeta(meta: Omit<Meta, 'id' | 'criado_em'> & { id?: string }): Promise<void> {
   const { error } = await supabase
     .from('metas')
     .upsert(

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect } from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, RefreshControl } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Wallet, ListTodo, CalendarDays, Settings, Users, ChevronRight } from 'lucide-react-native';
@@ -25,11 +25,9 @@ function makeStyles(C: AppColors) {
 
 export default function HomeScreen({ navigation }: any) {
   const { Colors } = useTheme();
-  const s = makeStyles(Colors);
+  const s = useMemo(() => makeStyles(Colors), [Colors]);
   const insets = useSafeAreaInsets();
   
-  // ✅ Pegamos as variáveis do contexto. 
-  // Se o AppContext atualizar, o HomeScreen irá renderizar novamente sozinho.
   const { nomeUsuario, qtdMembros, grupo, carregandoGrupo } = useApp();
 
   const modules = [
@@ -43,14 +41,14 @@ export default function HomeScreen({ navigation }: any) {
       <ScrollView 
         contentContainerStyle={s.scroll} 
         showsVerticalScrollIndicator={false}
-        // ✅ Adicionamos um RefreshControl para caso o usuário queira forçar, 
-        // mas o foco é a atualização automática via Context.
         refreshControl={
-          <RefreshControl refreshing={carregandoGrupo} tintColor={Colors.primary} />
+          <RefreshControl
+            refreshing={carregandoGrupo}
+            tintColor={Colors.primary}
+          />
         }
       >
         <View style={s.header}>
-          {/* ✅ Usamos um fallback ('...') para quando estiver carregando */}
           <Text style={s.greeting}>Olá, {nomeUsuario || '...'}</Text>
           <Text style={s.subtitle}>{grupo?.nome || 'Carregando família...'}</Text>
           

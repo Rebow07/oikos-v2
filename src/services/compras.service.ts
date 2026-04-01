@@ -39,7 +39,7 @@ export async function buscarItens(listaId: string): Promise<ItemCompra[]> {
   return (data as ItemCompra[]) || [];
 }
 
-export async function criarItem(item: Omit<ItemCompra, 'id'>): Promise<ItemCompra> {
+export async function criarItem(item: Omit<ItemCompra, 'id' | 'criado_em'>): Promise<ItemCompra> {
   const { data, error } = await supabase
     .from('itens_compra')
     .insert(item)

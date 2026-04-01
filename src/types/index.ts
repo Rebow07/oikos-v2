@@ -43,6 +43,7 @@ export interface Transacao {
   pago: boolean;
   pago_em: string | null;
   criado_por_nome: string | null;
+  comprovante_url?: string | null;
 }
 
 export interface TransacaoInsert {
@@ -59,6 +60,7 @@ export interface TransacaoInsert {
   cartao_id?: string | null;
   parcela_grupo_id?: string | null;
   parcela_index?: number | null;
+  comprovante_url?: string | null;
 }
 
 export interface FiltroTransacao {
@@ -245,20 +247,4 @@ export interface DashboardResumo {
   percentualGasto: number;
   transacoesRecentes: Transacao[];
 }
-
-
-export interface Recorrente {
-  id: string;
-  grupo_id: string;
-  criado_por: string;
-  criado_por_nome: string | null;
-  titulo: string;
-  valor: number;
-  categoria: string;
-  cartao_id: string | null;
-  dia_vencimento: number;
-  ativo: boolean;
-  ultima_geracao: string | null;
-  criado_em: string;
-  periodicidade?: 'mensal' | 'trimestral' | 'semestral' | 'anual'; 
-}
+
